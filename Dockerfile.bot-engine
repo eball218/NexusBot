@@ -1,0 +1,35 @@
+FROM node:22-alpine AS base
+RUN corepack enable && corepack prepare pnpm@10.10.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/bot-engine/package.json ./apps/bot-engine/
+COPY packages/db/package.json ./packages/db/
+COPY packages/shared/package.json ./packages/shared/
+RUN pnpm install --frozen-lockfile
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/bot-engine/node_modules ./apps/bot-engine/node_modules
+COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY . .
+RUN pnpm --filter @nexusbot/shared build && \
+    pnpm --filter @nexusbot/db build && \
+    pnpm --filter @nexusbot/bot-engine build
+
+FROM base AS runner
+ENV NODE_ENV=production
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 appuser
+COPY --from=builder /app/apps/bot-engine/dist ./apps/bot-engine/dist
+COPY --from=builder /app/apps/bot-engine/node_modules ./apps/bot-engine/node_modules
+COPY --from=builder /app/packages/db/dist ./packages/db/dist
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/bot-engine/package.json ./apps/bot-engine/
+COPY --from=builder /app/packages/db/package.json ./packages/db/
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+USER appuser
+EXPOSE 4000
+CMD ["node", "apps/bot-engine/dist/index.js"]

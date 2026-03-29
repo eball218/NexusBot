@@ -1,0 +1,32 @@
+{
+  "name": "@nexusbot/bot-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nexusbot/db": "workspace:*",
+    "@nexusbot/shared": "workspace:*",
+    "drizzle-orm": "^0.38.0",
+    "discord.js": "^14.16.0",
+    "@twurple/auth": "^7.2.0",
+    "@twurple/chat": "^7.2.0",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "ioredis": "^5.4.0",
+    "cron": "^3.3.0",
+    "dotenv": "^16.4.0",
+    "pino": "^9.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0"
+  }
+}
