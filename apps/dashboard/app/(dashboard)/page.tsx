@@ -15,6 +15,14 @@ interface AnalyticsOverview {
   modActions24h: number;
   aiConversations24h: number;
   cronRuns24h: number;
+  activeCronJobs: number;
+}
+
+interface ActivityItem {
+  id: string;
+  type: 'mod' | 'cron' | 'ai';
+  event: string;
+  timestamp: string;
 }
 
 interface TenantTier {
@@ -41,29 +49,44 @@ function formatUptime(seconds: number): string {
   return `${h}h ${m}m`;
 }
 
+function formatRelativeTime(isoString: string): string {
+  const now = Date.now();
+  const then = new Date(isoString).getTime();
+  const diffSeconds = Math.floor((now - then) / 1000);
+
+  if (diffSeconds < 60) return 'just now';
+  if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
+  if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+  return `${Math.floor(diffSeconds / 86400)}d ago`;
+}
+
 export default function DashboardHome() {
   const [botStatus, setBotStatus] = useState<BotStatus | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsOverview | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [bot, stats, user] = await Promise.all([
+        const [bot, stats, user, recentActivity] = await Promise.all([
           authApi<BotStatus>('/bot/status').catch(() => ({ status: 'not_configured' }) as BotStatus),
           authApi<AnalyticsOverview>('/analytics/overview').catch(() => ({
             messages24h: 0,
             modActions24h: 0,
             aiConversations24h: 0,
             cronRuns24h: 0,
+            activeCronJobs: 0,
           }) as AnalyticsOverview),
           authApi<UserProfile>('/auth/me'),
+          authApi<ActivityItem[]>('/analytics/recent-activity').catch(() => [] as ActivityItem[]),
         ]);
         setBotStatus(bot);
         setAnalytics(stats);
         setProfile(user);
+        setActivity(recentActivity);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           window.location.href = `${WEB_URL}/login`;
@@ -112,22 +135,22 @@ export default function DashboardHome() {
 
   const usageItems = [
     {
-      label: 'AI Messages',
-      used: 0,
-      max: tier?.limits?.aiMessagesPerHour ?? 0,
-      unit: '/hr',
+      label: 'AI Messages (24h)',
+      used: analytics?.messages24h ?? 0,
+      max: (tier?.limits?.aiMessagesPerHour ?? 0) * 24,
+      unit: '/day',
     },
     {
       label: 'Cron Jobs',
-      used: 0,
+      used: analytics?.activeCronJobs ?? 0,
       max: tier?.limits?.cronJobs ?? 0,
       unit: '',
     },
     {
       label: 'Memory',
-      used: 0,
-      max: tier?.limits?.memoryEnabled ? 1 : 0,
-      unit: tier?.limits?.memoryEnabled ? '' : ' (upgrade required)',
+      used: tier?.limits?.memoryEnabled ? 1 : 0,
+      max: 1,
+      unit: tier?.limits?.memoryEnabled ? ' (enabled)' : ' (upgrade required)',
     },
   ];
 
@@ -178,27 +201,30 @@ export default function DashboardHome() {
 
       {/* Activity Feed + Usage */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Activity Feed (placeholder — requires WebSocket) */}
+        {/* Activity Feed */}
         <div className="lg:col-span-2 rounded-xl border border-white/5 bg-background-elevated p-6">
           <h3 className="text-sm font-semibold text-text-primary">Recent Activity</h3>
           <div className="mt-4 space-y-3">
-            {[
-              { time: '2m ago', event: 'Moderated spam message from user123', type: 'mod' },
-              { time: '5m ago', event: 'AI responded to @viewer_fan in #general', type: 'ai' },
-              { time: '12m ago', event: 'Cron job "daily-stats" executed successfully', type: 'cron' },
-              { time: '18m ago', event: 'Timeout applied to toxic_user (30min)', type: 'mod' },
-              { time: '25m ago', event: 'AI conversation started with @newbie_gamer', type: 'ai' },
-            ].map((item, i) => (
-              <div key={i} className="flex items-start gap-3 border-b border-white/5 pb-3 last:border-0 last:pb-0">
-                <div className={`mt-0.5 h-2 w-2 rounded-full ${
-                  item.type === 'mod' ? 'bg-warning' : item.type === 'ai' ? 'bg-accent-primary' : 'bg-success'
-                }`} />
-                <div className="flex-1">
-                  <p className="text-sm text-text-secondary">{item.event}</p>
-                  <p className="text-xs text-text-muted">{item.time}</p>
-                </div>
+            {activity.length === 0 ? (
+              <div className="py-8 text-center">
+                <p className="text-sm text-text-muted">No activity yet</p>
+                <p className="mt-1 text-xs text-text-muted">
+                  Activity will appear here as your bot processes messages, moderates, and runs scheduled jobs.
+                </p>
               </div>
-            ))}
+            ) : (
+              activity.map((item) => (
+                <div key={item.id} className="flex items-start gap-3 border-b border-white/5 pb-3 last:border-0 last:pb-0">
+                  <div className={`mt-0.5 h-2 w-2 rounded-full ${
+                    item.type === 'mod' ? 'bg-warning' : item.type === 'ai' ? 'bg-accent-primary' : 'bg-success'
+                  }`} />
+                  <div className="flex-1">
+                    <p className="text-sm text-text-secondary">{item.event}</p>
+                    <p className="text-xs text-text-muted">{formatRelativeTime(item.timestamp)}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

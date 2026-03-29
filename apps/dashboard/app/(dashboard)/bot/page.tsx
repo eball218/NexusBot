@@ -1,37 +1,103 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { authApi, ApiError } from '@/lib/api';
+import { WEB_URL } from '@/lib/constants';
 
-const initialStatus = {
-  online: true,
-  platform: 'Discord',
-  uptime: '14h 32m',
-  lastActivity: '2 minutes ago',
-  messagesHandled: 1247,
-  activeUsers: 38,
-};
+interface BotStatus {
+  status: string;
+  platform?: string;
+  uptime?: number;
+  lastActivity?: string;
+  messagesHandled?: number;
+  activeUsers?: number;
+}
+
+function formatUptime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${m}m`;
+}
 
 export default function BotManagementPage() {
-  const [botStatus, setBotStatus] = useState(initialStatus);
-  const [isOnline, setIsOnline] = useState(botStatus.online);
+  const [botStatus, setBotStatus] = useState<BotStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  function simulateAction(action: string) {
-    setActionLoading(action);
-    setTimeout(() => {
-      if (action === 'stop') setIsOnline(false);
-      if (action === 'start') setIsOnline(true);
-      if (action === 'restart') {
-        setIsOnline(false);
-        setTimeout(() => setIsOnline(true), 600);
+  const isOnline = botStatus?.status === 'running' || botStatus?.status === 'online';
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const status = await authApi<BotStatus>('/bot/status');
+      setBotStatus(status);
+      setError(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        window.location.href = `${WEB_URL}/login`;
+        return;
       }
+      setError(err instanceof Error ? err.message : 'Failed to load bot status');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  async function handleAction(action: 'start' | 'stop' | 'restart') {
+    setActionLoading(action);
+    try {
+      await authApi(`/bot/${action}`, { method: 'POST' });
+      // Re-fetch status after action completes
+      await fetchStatus();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        window.location.href = `${WEB_URL}/login`;
+        return;
+      }
+      setError(err instanceof Error ? err.message : `Failed to ${action} bot`);
+    } finally {
       setActionLoading(null);
-    }, 800);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (error && !botStatus) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-text-primary">Bot Management</h1>
+        <div className="rounded-xl border border-danger/20 bg-danger/5 p-6">
+          <p className="text-sm text-danger">{error}</p>
+          <button
+            onClick={() => { setLoading(true); setError(null); fetchStatus(); }}
+            className="mt-3 rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-text-secondary hover:bg-white/10"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-text-primary">Bot Management</h1>
+
+      {error && (
+        <div className="rounded-xl border border-danger/20 bg-danger/5 p-4">
+          <p className="text-sm text-danger">{error}</p>
+        </div>
+      )}
 
       {/* Status Card */}
       <div className="rounded-xl border border-white/5 bg-background-elevated p-6">
@@ -49,7 +115,7 @@ export default function BotManagementPage() {
               </h2>
               <p className="text-sm text-text-muted">
                 {isOnline
-                  ? `Connected to ${botStatus.platform}`
+                  ? `Connected to ${botStatus?.platform ?? 'platform'}`
                   : 'Bot is not running'}
               </p>
             </div>
@@ -57,7 +123,8 @@ export default function BotManagementPage() {
 
           {/* Online/Offline Toggle */}
           <button
-            onClick={() => simulateAction(isOnline ? 'stop' : 'start')}
+            onClick={() => handleAction(isOnline ? 'stop' : 'start')}
+            disabled={actionLoading !== null}
             className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
               isOnline ? 'bg-success' : 'bg-white/10'
             }`}
@@ -74,10 +141,10 @@ export default function BotManagementPage() {
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Platform', value: botStatus.platform },
-          { label: 'Uptime', value: isOnline ? botStatus.uptime : '--' },
-          { label: 'Last Activity', value: botStatus.lastActivity },
-          { label: 'Messages Handled', value: botStatus.messagesHandled.toLocaleString() },
+          { label: 'Platform', value: botStatus?.platform ?? '--' },
+          { label: 'Uptime', value: isOnline && botStatus?.uptime != null ? formatUptime(botStatus.uptime) : '--' },
+          { label: 'Last Activity', value: botStatus?.lastActivity ?? '--' },
+          { label: 'Messages Handled', value: botStatus?.messagesHandled?.toLocaleString() ?? '--' },
         ].map((stat) => (
           <div key={stat.label} className="rounded-xl border border-white/5 bg-background-elevated p-4">
             <p className="text-xs font-medium text-text-muted">{stat.label}</p>
@@ -91,21 +158,21 @@ export default function BotManagementPage() {
         <h3 className="text-sm font-semibold text-text-primary">Quick Actions</h3>
         <div className="mt-4 flex flex-wrap gap-3">
           <button
-            onClick={() => simulateAction('start')}
+            onClick={() => handleAction('start')}
             disabled={isOnline || actionLoading !== null}
             className="rounded-lg bg-success/10 px-4 py-2 text-sm font-medium text-success hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {actionLoading === 'start' ? 'Starting...' : 'Start Bot'}
           </button>
           <button
-            onClick={() => simulateAction('stop')}
+            onClick={() => handleAction('stop')}
             disabled={!isOnline || actionLoading !== null}
             className="rounded-lg bg-danger/10 px-4 py-2 text-sm font-medium text-danger hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {actionLoading === 'stop' ? 'Stopping...' : 'Stop Bot'}
           </button>
           <button
-            onClick={() => simulateAction('restart')}
+            onClick={() => handleAction('restart')}
             disabled={!isOnline || actionLoading !== null}
             className="rounded-lg bg-warning/10 px-4 py-2 text-sm font-medium text-warning hover:bg-warning/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -117,23 +184,8 @@ export default function BotManagementPage() {
       {/* Recent Events */}
       <div className="rounded-xl border border-white/5 bg-background-elevated p-6">
         <h3 className="text-sm font-semibold text-text-primary">Recent Events</h3>
-        <div className="mt-4 space-y-3">
-          {[
-            { time: '2m ago', event: 'Responded to @viewer_fan in #general', type: 'ai' },
-            { time: '5m ago', event: 'Auto-moderated spam message', type: 'mod' },
-            { time: '12m ago', event: 'Cron job "daily-stats" completed', type: 'cron' },
-            { time: '30m ago', event: 'Bot reconnected after brief disconnect', type: 'system' },
-          ].map((item, i) => (
-            <div key={i} className="flex items-start gap-3 border-b border-white/5 pb-3 last:border-0 last:pb-0">
-              <div className={`mt-0.5 h-2 w-2 rounded-full ${
-                item.type === 'mod' ? 'bg-warning' : item.type === 'ai' ? 'bg-accent-primary' : item.type === 'cron' ? 'bg-success' : 'bg-text-muted'
-              }`} />
-              <div className="flex-1">
-                <p className="text-sm text-text-secondary">{item.event}</p>
-                <p className="text-xs text-text-muted">{item.time}</p>
-              </div>
-            </div>
-          ))}
+        <div className="mt-4">
+          <p className="text-sm text-text-muted">No recent events to display.</p>
         </div>
       </div>
     </div>
