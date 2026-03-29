@@ -3,15 +3,21 @@
  * Run with: tsx apps/bot-engine/src/standalone-bot.ts
  */
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
 import { StaticAuthProvider } from '@twurple/auth';
 import { ChatClient } from '@twurple/chat';
-import pino from 'pino';
 
-const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: { target: 'pino-pretty', options: { colorize: true } },
-});
+// Simple logger (no pino-pretty dependency)
+const LOG_LEVEL = process.env.LOG_LEVEL || 'debug';
+const LEVELS: Record<string, number> = { debug: 10, info: 20, warn: 30, error: 40, fatal: 50 };
+const currentLevel = LEVELS[LOG_LEVEL] ?? 20;
+const logger = {
+  debug: (obj: unknown, msg?: string) => { if (currentLevel <= 10) console.log(`[DEBUG] ${msg || ''}`, typeof obj === 'string' ? obj : JSON.stringify(obj)); },
+  info: (obj: unknown, msg?: string) => { if (currentLevel <= 20) console.log(`[INFO] ${msg || ''}`, typeof obj === 'string' ? obj : JSON.stringify(obj)); },
+  warn: (obj: unknown, msg?: string) => { if (currentLevel <= 30) console.warn(`[WARN] ${msg || ''}`, typeof obj === 'string' ? obj : JSON.stringify(obj)); },
+  error: (obj: unknown, msg?: string) => { if (currentLevel <= 40) console.error(`[ERROR] ${msg || ''}`, typeof obj === 'string' ? obj : JSON.stringify(obj)); },
+  fatal: (obj: unknown, msg?: string) => { console.error(`[FATAL] ${msg || ''}`, typeof obj === 'string' ? obj : JSON.stringify(obj)); },
+};
 
 // Config from env
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
@@ -77,14 +83,41 @@ async function startDiscord() {
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMembers,
     ],
+    partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
+  });
+
+  // Debug: log ALL events
+  client.on(Events.Debug, (info) => {
+    if (info.includes('Heartbeat')) return; // skip heartbeat spam
+    logger.debug({ tag: 'discord-debug' }, info);
+  });
+
+  client.on(Events.Warn, (info) => {
+    logger.warn({ tag: 'discord-warn' }, info);
+  });
+
+  client.on(Events.Error, (err) => {
+    logger.error({ tag: 'discord-error', error: err.message }, 'Discord client error');
   });
 
   client.on(Events.ClientReady, (c) => {
     logger.info({ tag: 'discord', user: c.user.tag, guilds: c.guilds.cache.size }, 'Discord bot connected!');
+    // List all guilds and channels for verification
+    c.guilds.cache.forEach((guild) => {
+      logger.info({ tag: 'discord', guildId: guild.id, guildName: guild.name, memberCount: guild.memberCount }, 'Connected to guild');
+      const textChannels = guild.channels.cache.filter((ch) => ch.type === 0); // 0 = GuildText
+      textChannels.forEach((ch) => {
+        logger.info({ tag: 'discord', channelId: ch.id, channelName: ch.name }, 'Text channel found');
+      });
+    });
   });
 
   client.on(Events.MessageCreate, async (message) => {
+    // Log EVERY message first (including bot messages) for debugging
+    logger.info({ tag: 'discord-msg', author: message.author?.tag, bot: message.author?.bot, content: message.content, guildId: message.guild?.id, channelId: message.channel?.id }, 'RAW MessageCreate event');
+
     // Ignore bots and DMs
     if (message.author.bot) return;
     if (!message.guild) return;
@@ -93,7 +126,7 @@ async function startDiscord() {
     const content = message.content;
     const authorName = message.member?.displayName || message.author.username;
 
-    logger.debug({ tag: 'discord', author: authorName, content }, 'Message received');
+    logger.info({ tag: 'discord', author: authorName, content }, 'Message received from user');
 
     // Moderation
     if (isSpam(content)) {
