@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, setTokens } from '@/lib/api';
+import { DASHBOARD_URL, WEB_URL, DISCORD_CLIENT_ID, TWITCH_CLIENT_ID } from '@/lib/constants';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function LoginPage() {
       });
       setTokens(tokens.accessToken, tokens.refreshToken);
       // Pass tokens via URL params since dashboard is on a different port (different localStorage)
-      window.location.href = `http://localhost:3002?token=${encodeURIComponent(tokens.accessToken)}&refresh=${encodeURIComponent(tokens.refreshToken)}`;
+      window.location.href = `${DASHBOARD_URL}?token=${encodeURIComponent(tokens.accessToken)}&refresh=${encodeURIComponent(tokens.refreshToken)}`;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -34,13 +35,13 @@ export default function LoginPage() {
 
   const handleOAuth = (provider: 'discord' | 'twitch') => {
     const clientId = provider === 'discord'
-      ? process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID || '1487664355901177977'
-      : process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID || 'f5u2x188rr9bvkel95ly333z65vh5w';
+      ? DISCORD_CLIENT_ID
+      : TWITCH_CLIENT_ID;
 
     if (provider === 'discord') {
       const params = new URLSearchParams({
         client_id: clientId,
-        redirect_uri: 'http://localhost:3000/api/auth/callback/discord',
+        redirect_uri: `${WEB_URL}/api/auth/callback/discord`,
         response_type: 'code',
         scope: 'identify email guilds',
       });
@@ -48,7 +49,7 @@ export default function LoginPage() {
     } else {
       const params = new URLSearchParams({
         client_id: clientId,
-        redirect_uri: 'http://localhost:3000/api/auth/callback/twitch',
+        redirect_uri: `${WEB_URL}/api/auth/callback/twitch`,
         response_type: 'code',
         scope: 'user:read:email',
       });

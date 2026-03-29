@@ -1,4 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+import { API_URL, WEB_URL } from '@/lib/constants';
+
+const API_BASE = API_URL;
 
 interface ApiOptions {
   method?: string;
@@ -69,7 +71,7 @@ export function clearTokens(): void {
 export async function authApi<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const tokens = getTokens();
   if (!tokens) {
-    window.location.href = 'http://localhost:3000/login';
+    window.location.href = `${WEB_URL}/login`;
     throw new ApiError(401, 'UNAUTHORIZED', 'Not logged in');
   }
   return api<T>(path, { ...options, token: tokens.accessToken });

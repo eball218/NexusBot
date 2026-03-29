@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { WEB_URL } from '@/lib/constants';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
@@ -11,7 +12,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       setStatus('authenticated');
     } else {
       setStatus('unauthenticated');
-      window.location.href = 'http://localhost:3000/login';
+      window.location.href = `${WEB_URL}/login`;
     }
   }, []);
 

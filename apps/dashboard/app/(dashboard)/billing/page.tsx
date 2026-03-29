@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { authApi, ApiError } from '@/lib/api';
+import { WEB_URL } from '@/lib/constants';
 
 interface Subscription {
   id: string;
@@ -60,7 +61,7 @@ export default function BillingPage() {
         setProfile(user);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
-          window.location.href = 'http://localhost:3000/login';
+          window.location.href = `${WEB_URL}/login`;
           return;
         }
         setError(err instanceof Error ? err.message : 'Failed to load billing data');

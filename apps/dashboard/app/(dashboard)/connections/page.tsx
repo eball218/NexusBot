@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { authApi, ApiError } from '@/lib/api';
+import { WEB_URL, DASHBOARD_URL } from '@/lib/constants';
 
 interface Connection {
   id: string;
@@ -11,11 +12,14 @@ interface Connection {
   status: string;
 }
 
+const DISCORD_CLIENT_ID = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID || '1487664355901177977';
+const TWITCH_CLIENT_ID = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID || 'f5u2x188rr9bvkel95ly333z65vh5w';
+
 const OAUTH_URLS: Record<string, string> = {
   discord:
-    'https://discord.com/api/oauth2/authorize?client_id=1487664355901177977&redirect_uri=http://localhost:3000/api/auth/callback/discord&response_type=code&scope=identify+email+guilds+bot',
+    `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(`${WEB_URL}/api/auth/callback/discord`)}&response_type=code&scope=identify+email+guilds+bot`,
   twitch:
-    'https://id.twitch.tv/oauth2/authorize?client_id=f5u2x188rr9bvkel95ly333z65vh5w&redirect_uri=http://localhost:3000/api/auth/callback/twitch&response_type=code&scope=user:read:email',
+    `https://id.twitch.tv/oauth2/authorize?client_id=${TWITCH_CLIENT_ID}&redirect_uri=${encodeURIComponent(`${WEB_URL}/api/auth/callback/twitch`)}&response_type=code&scope=user:read:email`,
 };
 
 export default function ConnectionsPage() {
@@ -31,7 +35,7 @@ export default function ConnectionsPage() {
         setConnections(data);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
-          window.location.href = 'http://localhost:3000/login';
+          window.location.href = `${WEB_URL}/login`;
           return;
         }
         setError(err instanceof Error ? err.message : 'Failed to load connections');
@@ -49,7 +53,7 @@ export default function ConnectionsPage() {
       setConnections((prev) => prev.filter((c) => c.platform !== platform));
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        window.location.href = 'http://localhost:3000/login';
+        window.location.href = `${WEB_URL}/login`;
         return;
       }
       alert(err instanceof Error ? err.message : 'Failed to disconnect');

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { WEB_URL, DISCORD_CLIENT_ID, TWITCH_CLIENT_ID } from '@/lib/constants';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
@@ -52,13 +53,13 @@ export default function RegisterPage() {
 
   const handleOAuth = (provider: 'discord' | 'twitch') => {
     const clientId = provider === 'discord'
-      ? '1487664355901177977'
-      : 'f5u2x188rr9bvkel95ly333z65vh5w';
+      ? DISCORD_CLIENT_ID
+      : TWITCH_CLIENT_ID;
 
     if (provider === 'discord') {
       const params = new URLSearchParams({
         client_id: clientId,
-        redirect_uri: 'http://localhost:3000/api/auth/callback/discord',
+        redirect_uri: `${WEB_URL}/api/auth/callback/discord`,
         response_type: 'code',
         scope: 'identify email guilds',
       });
@@ -66,7 +67,7 @@ export default function RegisterPage() {
     } else {
       const params = new URLSearchParams({
         client_id: clientId,
-        redirect_uri: 'http://localhost:3000/api/auth/callback/twitch',
+        redirect_uri: `${WEB_URL}/api/auth/callback/twitch`,
         response_type: 'code',
         scope: 'user:read:email',
       });
