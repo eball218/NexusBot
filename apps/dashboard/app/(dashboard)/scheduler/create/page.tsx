@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { authApi } from '@/lib/api';
 
 const presets = [
   { label: 'Every hour', value: '0 * * * *' },
@@ -14,12 +16,35 @@ const presets = [
 ];
 
 export default function SchedulerCreatePage() {
+  const router = useRouter();
   const [name, setName] = useState('');
   const [schedule, setSchedule] = useState('');
   const [platform, setPlatform] = useState('discord');
   const [actionType, setActionType] = useState('send_message');
   const [message, setMessage] = useState('');
   const [channel, setChannel] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleCreate() {
+    if (!name.trim() || !schedule.trim()) {
+      setError('Job name and schedule are required.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await authApi('/scheduler/jobs', {
+        method: 'POST',
+        body: { name, schedule, platform, actionType, message, channel },
+      });
+      router.push('/scheduler');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create job');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -28,6 +53,12 @@ export default function SchedulerCreatePage() {
         <h1 className="mt-2 text-2xl font-bold text-text-primary">Create Job</h1>
         <p className="mt-1 text-sm text-text-muted">Set up a new automated cron job</p>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+          {error}
+        </div>
+      )}
 
       <div className="rounded-xl border border-white/5 bg-background-elevated p-6 space-y-5">
         {/* Name */}
@@ -124,8 +155,12 @@ export default function SchedulerCreatePage() {
 
         {/* Submit */}
         <div className="flex items-center gap-3 pt-2">
-          <button className="rounded-lg bg-accent-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
-            Create Job
+          <button
+            onClick={handleCreate}
+            disabled={submitting}
+            className="rounded-lg bg-accent-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {submitting ? 'Creating...' : 'Create Job'}
           </button>
           <a href="/scheduler" className="rounded-lg border border-white/10 px-5 py-2.5 text-sm text-text-secondary hover:bg-white/5">
             Cancel

@@ -1,20 +1,46 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { authApi } from '@/lib/api';
 
-const logs = [
-  { id: 1, job: 'Daily Stats Post', startedAt: '2026-03-28 09:00:02', duration: '1.2s', status: 'success', error: null },
-  { id: 2, job: 'Weekly Recap', startedAt: '2026-03-24 12:00:01', duration: '3.8s', status: 'success', error: null },
-  { id: 3, job: 'Hourly Chat Purge', startedAt: '2026-03-28 15:00:00', duration: '0.4s', status: 'failed', error: 'Channel not found: #old-chat. The channel may have been deleted or the bot lacks permission.' },
-  { id: 4, job: 'Stream Reminder', startedAt: '2026-03-28 18:00:01', duration: '0.9s', status: 'success', error: null },
-  { id: 5, job: 'Follower Milestone Check', startedAt: '2026-03-28 16:00:00', duration: '2.1s', status: 'success', error: null },
-  { id: 6, job: 'Daily Stats Post', startedAt: '2026-03-27 09:00:03', duration: '1.1s', status: 'success', error: null },
-  { id: 7, job: 'Hourly Chat Purge', startedAt: '2026-03-28 14:00:00', duration: '0.3s', status: 'failed', error: 'Channel not found: #old-chat. The channel may have been deleted or the bot lacks permission.' },
-  { id: 8, job: 'Nightly Backup Export', startedAt: '2026-03-28 03:00:00', duration: '12.4s', status: 'success', error: null },
-];
+type LogEntry = {
+  id: string;
+  job: string;
+  startedAt: string;
+  duration: string;
+  status: string;
+  error: string | null;
+};
 
 export default function SchedulerLogsPage() {
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const fetchLogs = useCallback(async () => {
+    try {
+      const data = await authApi<LogEntry[]>('/scheduler/logs');
+      setLogs(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load logs');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -23,6 +49,12 @@ export default function SchedulerLogsPage() {
         <h1 className="mt-2 text-2xl font-bold text-text-primary">Execution Logs</h1>
         <p className="mt-1 text-sm text-text-muted">History of cron job executions</p>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+          {error}
+        </div>
+      )}
 
       <div className="rounded-xl border border-white/5 bg-background-elevated overflow-hidden">
         <table className="w-full text-sm">
@@ -75,6 +107,13 @@ export default function SchedulerLogsPage() {
                 )}
               </>
             ))}
+            {logs.length === 0 && !error && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-text-muted">
+                  No execution logs yet.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

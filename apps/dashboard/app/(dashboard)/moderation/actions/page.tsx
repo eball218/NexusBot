@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { authApi, ApiError } from '@/lib/api';
 
 interface ModAction {
   id: number;
@@ -11,19 +12,6 @@ interface ModAction {
   reason: string;
   rule: string;
 }
-
-const allActions: ModAction[] = [
-  { id: 1, timestamp: '2025-03-28 14:32', user: 'toxic_user42', platform: 'twitch', actionType: 'ban', reason: 'Repeated hate speech', rule: 'Hate Speech Filter' },
-  { id: 2, timestamp: '2025-03-28 14:25', user: 'spammer99', platform: 'discord', actionType: 'timeout', reason: 'Posting invite links', rule: 'Link Spam' },
-  { id: 3, timestamp: '2025-03-28 14:18', user: 'new_viewer', platform: 'twitch', actionType: 'warn', reason: 'Excessive caps', rule: 'Caps Lock Filter' },
-  { id: 4, timestamp: '2025-03-28 14:11', user: 'raid_bot_7', platform: 'discord', actionType: 'ban', reason: 'Bot raid detected', rule: 'Raid Protection' },
-  { id: 5, timestamp: '2025-03-28 13:47', user: 'annoying_guy', platform: 'twitch', actionType: 'timeout', reason: 'Symbol spam in chat', rule: 'Symbol Spam' },
-  { id: 6, timestamp: '2025-03-28 13:30', user: 'promo_account', platform: 'discord', actionType: 'warn', reason: 'Self-promotion in #general', rule: 'Self-Promo Filter' },
-  { id: 7, timestamp: '2025-03-28 12:15', user: 'scammer_link', platform: 'discord', actionType: 'ban', reason: 'Phishing link detected', rule: 'Phishing Filter' },
-  { id: 8, timestamp: '2025-03-28 11:58', user: 'caps_user', platform: 'twitch', actionType: 'warn', reason: 'Excessive caps', rule: 'Caps Lock Filter' },
-  { id: 9, timestamp: '2025-03-28 11:22', user: 'repeat_offender', platform: 'twitch', actionType: 'timeout', reason: 'Third warning escalation', rule: 'Auto-Escalation' },
-  { id: 10, timestamp: '2025-03-27 23:45', user: 'night_troll', platform: 'discord', actionType: 'ban', reason: 'Slurs and harassment', rule: 'Hate Speech Filter' },
-];
 
 const actionTypeColors: Record<string, string> = {
   warn: 'bg-warning/10 text-warning',
@@ -37,10 +25,28 @@ const platformColors: Record<string, string> = {
 };
 
 export default function ModerationActionsPage() {
+  const [allActions, setAllActions] = useState<ModAction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  useEffect(() => {
+    const fetchActions = async () => {
+      try {
+        setError(null);
+        const data = await authApi<ModAction[]>('/moderation/actions');
+        setAllActions(data);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Failed to load actions');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchActions();
+  }, []);
 
   const filtered = allActions.filter((a) => {
     if (platformFilter !== 'all' && a.platform !== platformFilter) return false;
@@ -50,12 +56,33 @@ export default function ModerationActionsPage() {
     return true;
   });
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Mod Action Log</h1>
+          <p className="mt-1 text-sm text-text-muted">Complete history of all moderation actions.</p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Mod Action Log</h1>
         <p className="mt-1 text-sm text-text-muted">Complete history of all moderation actions.</p>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-4 rounded-xl border border-white/5 bg-background-elevated p-4">

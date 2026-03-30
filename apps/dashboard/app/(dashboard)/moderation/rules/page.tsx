@@ -1,30 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { authApi, ApiError } from '@/lib/api';
 
 interface Rule {
   id: number;
-  type: string;
+  ruleType: string;
   pattern: string;
   severity: number;
   action: 'warn' | 'timeout' | 'ban';
-  platforms: ('twitch' | 'discord')[];
+  platforms: string;
   enabled: boolean;
 }
-
-const initialRules: Rule[] = [
-  { id: 1, type: 'Regex', pattern: '/(n|i|g){3,}/i', severity: 5, action: 'ban', platforms: ['twitch', 'discord'], enabled: true },
-  { id: 2, type: 'Contains', pattern: 'discord.gg/', severity: 4, action: 'timeout', platforms: ['twitch'], enabled: true },
-  { id: 3, type: 'Regex', pattern: '/[A-Z\\s]{20,}/', severity: 2, action: 'warn', platforms: ['twitch', 'discord'], enabled: true },
-  { id: 4, type: 'Contains', pattern: 'buy followers', severity: 3, action: 'ban', platforms: ['twitch', 'discord'], enabled: true },
-  { id: 5, type: 'Regex', pattern: '/(.{1,3})\\1{5,}/', severity: 2, action: 'timeout', platforms: ['discord'], enabled: false },
-  { id: 6, type: 'Contains', pattern: 'free nitro', severity: 4, action: 'ban', platforms: ['discord'], enabled: true },
-];
 
 const actionColors: Record<string, string> = {
   warn: 'bg-warning/10 text-warning border-warning/20',
   timeout: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
   ban: 'bg-danger/10 text-danger border-danger/20',
+};
+
+const platformLabels: Record<string, string[]> = {
+  both: ['twitch', 'discord'],
+  twitch: ['twitch'],
+  discord: ['discord'],
 };
 
 const platformColors: Record<string, string> = {
@@ -53,14 +51,102 @@ function SeverityDots({ level }: { level: number }) {
   );
 }
 
-export default function ModerationRulesPage() {
-  const [rules, setRules] = useState<Rule[]>(initialRules);
+const emptyForm = {
+  ruleType: 'spam' as string,
+  pattern: '',
+  severity: 3,
+  action: 'warn' as 'warn' | 'timeout' | 'ban',
+  platforms: 'both' as string,
+  enabled: true,
+};
 
-  const toggleRule = (id: number) => {
-    setRules((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))
-    );
+export default function ModerationRulesPage() {
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [form, setForm] = useState({ ...emptyForm });
+  const [submitting, setSubmitting] = useState(false);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const fetchRules = async () => {
+    try {
+      setError(null);
+      const data = await authApi<Rule[]>('/moderation/rules');
+      setRules(data);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to load rules');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    fetchRules();
+  }, []);
+
+  const toggleRule = async (id: number) => {
+    setTogglingId(id);
+    try {
+      const updated = await authApi<Rule>(`/moderation/rules/${id}/toggle`, { method: 'PATCH' });
+      setRules((prev) => prev.map((r) => (r.id === id ? updated : r)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to toggle rule');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const deleteRule = async (id: number) => {
+    setDeletingId(id);
+    try {
+      await authApi(`/moderation/rules/${id}`, { method: 'DELETE' });
+      setRules((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to delete rule');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const addRule = async () => {
+    setSubmitting(true);
+    try {
+      const created = await authApi<Rule>('/moderation/rules', {
+        method: 'POST',
+        body: {
+          ruleType: form.ruleType,
+          pattern: form.pattern,
+          severity: form.severity,
+          action: form.action,
+          platforms: form.platforms,
+          enabled: form.enabled,
+        },
+      });
+      setRules((prev) => [...prev, created]);
+      setShowAddForm(false);
+      setForm({ ...emptyForm });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to add rule');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Moderation Rules</h1>
+          <p className="mt-1 text-sm text-text-muted">Configure auto-moderation rules and filters.</p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -69,10 +155,103 @@ export default function ModerationRulesPage() {
           <h1 className="text-2xl font-bold text-text-primary">Moderation Rules</h1>
           <p className="mt-1 text-sm text-text-muted">Configure auto-moderation rules and filters.</p>
         </div>
-        <button className="rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 transition-colors">
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 transition-colors"
+        >
           + Add Rule
         </button>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
+        </div>
+      )}
+
+      {/* Add Rule Form */}
+      {showAddForm && (
+        <div className="rounded-xl border border-white/10 bg-background-elevated p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-text-primary">New Rule</h3>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label className="block text-xs font-medium text-text-muted mb-1">Rule Type</label>
+              <select
+                value={form.ruleType}
+                onChange={(e) => setForm((f) => ({ ...f, ruleType: e.target.value }))}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+              >
+                <option value="spam">Spam</option>
+                <option value="links">Links</option>
+                <option value="toxicity">Toxicity</option>
+                <option value="caps_emotes">Caps / Emotes</option>
+                <option value="custom_words">Custom Words</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-muted mb-1">Pattern (regex)</label>
+              <input
+                type="text"
+                value={form.pattern}
+                onChange={(e) => setForm((f) => ({ ...f, pattern: e.target.value }))}
+                placeholder="/pattern/i"
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-muted mb-1">Severity (1-5)</label>
+              <input
+                type="number"
+                min={1}
+                max={5}
+                value={form.severity}
+                onChange={(e) => setForm((f) => ({ ...f, severity: Number(e.target.value) }))}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-muted mb-1">Action</label>
+              <select
+                value={form.action}
+                onChange={(e) => setForm((f) => ({ ...f, action: e.target.value as 'warn' | 'timeout' | 'ban' }))}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+              >
+                <option value="warn">Warn</option>
+                <option value="timeout">Timeout</option>
+                <option value="ban">Ban</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-muted mb-1">Platforms</label>
+              <select
+                value={form.platforms}
+                onChange={(e) => setForm((f) => ({ ...f, platforms: e.target.value }))}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+              >
+                <option value="both">Both</option>
+                <option value="discord">Discord</option>
+                <option value="twitch">Twitch</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => { setShowAddForm(false); setForm({ ...emptyForm }); }}
+              className="rounded-lg border border-white/10 px-4 py-1.5 text-xs font-medium text-text-secondary hover:bg-white/5 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={addRule}
+              disabled={submitting || !form.pattern}
+              className="rounded-lg bg-accent-primary px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-primary/90 transition-colors disabled:opacity-50"
+            >
+              {submitting ? 'Adding...' : 'Add Rule'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-3">
         {rules.map((rule) => (
@@ -99,7 +278,7 @@ export default function ModerationRulesPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="inline-flex items-center rounded-md bg-white/5 px-2 py-0.5 text-xs font-medium text-text-secondary">
-                    {rule.type}
+                    {rule.ruleType}
                   </span>
                   <code className="text-sm text-text-primary font-mono truncate">{rule.pattern}</code>
                 </div>
@@ -112,8 +291,8 @@ export default function ModerationRulesPage() {
                     {rule.action}
                   </span>
                   <div className="flex gap-1">
-                    {rule.platforms.map((p) => (
-                      <span key={p} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${platformColors[p]}`}>
+                    {(platformLabels[rule.platforms] || [rule.platforms]).map((p) => (
+                      <span key={p} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${platformColors[p] || ''}`}>
                         {p}
                       </span>
                     ))}
@@ -121,10 +300,20 @@ export default function ModerationRulesPage() {
                 </div>
               </div>
 
+              {/* Delete */}
+              <button
+                onClick={() => deleteRule(rule.id)}
+                disabled={deletingId === rule.id}
+                className="rounded-lg border border-white/10 px-3 py-1 text-xs text-danger hover:bg-danger/10 transition-colors disabled:opacity-50"
+              >
+                {deletingId === rule.id ? '...' : 'Delete'}
+              </button>
+
               {/* Toggle */}
               <button
                 onClick={() => toggleRule(rule.id)}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${
+                disabled={togglingId === rule.id}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-50 ${
                   rule.enabled ? 'bg-accent-primary' : 'bg-white/10'
                 }`}
                 role="switch"
@@ -139,6 +328,12 @@ export default function ModerationRulesPage() {
             </div>
           </div>
         ))}
+
+        {rules.length === 0 && !loading && (
+          <div className="rounded-xl border border-white/5 bg-background-elevated p-8 text-center">
+            <p className="text-sm text-text-muted">No moderation rules configured yet.</p>
+          </div>
+        )}
       </div>
     </div>
   );

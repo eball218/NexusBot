@@ -8,3 +8,4 @@ export * from './schema/moderation';
 export * from './schema/ai-memory';
 export * from './schema/cron-jobs';
 export * from './schema/system-config';
+export * from './schema/bot-commands';

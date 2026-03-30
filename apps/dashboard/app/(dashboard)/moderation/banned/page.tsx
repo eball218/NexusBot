@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { authApi, ApiError } from '@/lib/api';
 
 interface BannedUser {
   id: number;
@@ -12,28 +13,57 @@ interface BannedUser {
   expires: string | null;
 }
 
-const initialBanned: BannedUser[] = [
-  { id: 1, username: 'toxic_user42', platforms: ['twitch', 'discord'], banDate: '2025-03-28', reason: 'Repeated hate speech', type: 'permanent', expires: null },
-  { id: 2, username: 'raid_bot_7', platforms: ['discord'], banDate: '2025-03-28', reason: 'Bot raid detected', type: 'permanent', expires: null },
-  { id: 3, username: 'scammer_link', platforms: ['discord'], banDate: '2025-03-28', reason: 'Phishing link detected', type: 'permanent', expires: null },
-  { id: 4, username: 'night_troll', platforms: ['discord'], banDate: '2025-03-27', reason: 'Slurs and harassment', type: 'temporary', expires: '2025-04-27' },
-  { id: 5, username: 'spam_king', platforms: ['twitch'], banDate: '2025-03-26', reason: 'Excessive link spam', type: 'temporary', expires: '2025-04-02' },
-  { id: 6, username: 'hate_account_99', platforms: ['twitch', 'discord'], banDate: '2025-03-25', reason: 'Hate raid participation', type: 'permanent', expires: null },
-  { id: 7, username: 'bot_network_3', platforms: ['discord'], banDate: '2025-03-24', reason: 'Automated spam network', type: 'permanent', expires: null },
-  { id: 8, username: 'troll_streamer', platforms: ['twitch'], banDate: '2025-03-22', reason: 'Stream sniping + harassment', type: 'temporary', expires: '2025-04-22' },
-];
-
 const platformColors: Record<string, string> = {
   twitch: 'bg-purple-500/10 text-purple-400',
   discord: 'bg-indigo-500/10 text-indigo-400',
 };
 
 export default function BannedUsersPage() {
-  const [banned, setBanned] = useState<BannedUser[]>(initialBanned);
+  const [banned, setBanned] = useState<BannedUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [unbanningId, setUnbanningId] = useState<number | null>(null);
 
-  const handleUnban = (id: number) => {
-    setBanned((prev) => prev.filter((u) => u.id !== id));
+  useEffect(() => {
+    const fetchBanned = async () => {
+      try {
+        setError(null);
+        const data = await authApi<BannedUser[]>('/moderation/banned');
+        setBanned(data);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Failed to load banned users');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBanned();
+  }, []);
+
+  const handleUnban = async (id: number) => {
+    setUnbanningId(id);
+    try {
+      await authApi(`/moderation/banned/${id}/unban`, { method: 'POST' });
+      setBanned((prev) => prev.filter((u) => u.id !== id));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to unban user');
+    } finally {
+      setUnbanningId(null);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Banned Users</h1>
+          <p className="mt-1 text-sm text-text-muted">Loading banned users...</p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -43,6 +73,13 @@ export default function BannedUsersPage() {
           {banned.length} user{banned.length !== 1 ? 's' : ''} currently banned across all platforms.
         </p>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
+        </div>
+      )}
 
       <div className="rounded-xl border border-white/5 bg-background-elevated overflow-hidden">
         <div className="overflow-x-auto">
@@ -90,9 +127,10 @@ export default function BannedUsersPage() {
                   <td className="px-4 py-3">
                     <button
                       onClick={() => handleUnban(user.id)}
-                      className="rounded-lg border border-white/10 px-3 py-1 text-xs text-text-secondary hover:bg-white/5 hover:text-text-primary transition-colors"
+                      disabled={unbanningId === user.id}
+                      className="rounded-lg border border-white/10 px-3 py-1 text-xs text-text-secondary hover:bg-white/5 hover:text-text-primary transition-colors disabled:opacity-50"
                     >
-                      Unban
+                      {unbanningId === user.id ? 'Unbanning...' : 'Unban'}
                     </button>
                   </td>
                 </tr>

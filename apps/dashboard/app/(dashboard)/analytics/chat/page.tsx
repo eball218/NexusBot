@@ -1,4 +1,46 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { authApi } from '@/lib/api';
+
+type TopChatter = {
+  name: string;
+  messages: number;
+  platform: string;
+};
+
+type ChatAnalytics = {
+  topChatters: TopChatter[];
+};
+
 export default function ChatAnalyticsPage() {
+  const [data, setData] = useState<ChatAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const res = await authApi<ChatAnalytics>('/analytics/chat');
+        setData(res);
+      } catch {
+        // silently fall back to empty
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  const topChatters = data?.topChatters ?? [];
+
   return (
     <div className="space-y-6">
       <div>
@@ -31,24 +73,22 @@ export default function ChatAnalyticsPage() {
           <h3 className="text-sm font-semibold text-text-primary">Top Chatters</h3>
           <p className="mt-1 text-xs text-text-muted">Most active users this month</p>
           <div className="mt-4 space-y-2">
-            {[
-              { name: 'viewer_fan_42', messages: 312, platform: 'Twitch' },
-              { name: 'NightOwl#1234', messages: 287, platform: 'Discord' },
-              { name: 'speedrunner99', messages: 245, platform: 'Twitch' },
-              { name: 'ModHelper#5678', messages: 198, platform: 'Discord' },
-              { name: 'lurker_king', messages: 156, platform: 'Twitch' },
-            ].map((user, i) => (
-              <div key={user.name} className="flex items-center justify-between rounded-lg bg-white/[0.02] px-3 py-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-medium text-text-muted w-4">{i + 1}</span>
-                  <span className="text-sm text-text-primary">{user.name}</span>
-                  <span className={`text-[10px] rounded-full px-1.5 py-0.5 font-medium ${
-                    user.platform === 'Discord' ? 'bg-[#5865F2]/10 text-[#5865F2]' : 'bg-[#9146FF]/10 text-[#9146FF]'
-                  }`}>{user.platform}</span>
+            {topChatters.length === 0 ? (
+              <p className="text-sm text-text-muted py-4 text-center">No chat data available yet.</p>
+            ) : (
+              topChatters.map((user, i) => (
+                <div key={user.name} className="flex items-center justify-between rounded-lg bg-white/[0.02] px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-text-muted w-4">{i + 1}</span>
+                    <span className="text-sm text-text-primary">{user.name}</span>
+                    <span className={`text-[10px] rounded-full px-1.5 py-0.5 font-medium ${
+                      user.platform === 'Discord' ? 'bg-[#5865F2]/10 text-[#5865F2]' : 'bg-[#9146FF]/10 text-[#9146FF]'
+                    }`}>{user.platform}</span>
+                  </div>
+                  <span className="text-xs text-text-secondary">{user.messages} msgs</span>
                 </div>
-                <span className="text-xs text-text-secondary">{user.messages} msgs</span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 

@@ -13,6 +13,11 @@ import { adminRoutes } from './routes/admin.routes';
 import { botRoutes } from './routes/bot.routes';
 import { connectionsRoutes } from './routes/connections.routes';
 import { analyticsRoutes } from './routes/analytics.routes';
+import { moderationRoutes } from './routes/moderation.routes';
+import { personalityRoutes } from './routes/personality.routes';
+import { commandsRoutes } from './routes/commands.routes';
+import { schedulerRoutes } from './routes/scheduler.routes';
+import { settingsRoutes } from './routes/settings.routes';
 
 async function buildApp() {
   const app = Fastify({
@@ -92,6 +97,11 @@ async function buildApp() {
       await api.register(botRoutes, { prefix: '/bot' });
       await api.register(connectionsRoutes, { prefix: '/connections' });
       await api.register(analyticsRoutes, { prefix: '/analytics' });
+      await api.register(moderationRoutes, { prefix: '/moderation' });
+      await api.register(personalityRoutes, { prefix: '/personality' });
+      await api.register(commandsRoutes, { prefix: '/commands' });
+      await api.register(schedulerRoutes, { prefix: '/scheduler' });
+      await api.register(settingsRoutes, { prefix: '/settings' });
     },
     { prefix: '/api/v1' },
   );

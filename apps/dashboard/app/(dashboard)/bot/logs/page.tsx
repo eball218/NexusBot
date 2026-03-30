@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { authApi } from '@/lib/api';
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
@@ -12,21 +13,6 @@ type LogEntry = {
   platform: string;
 };
 
-const sampleLogs: LogEntry[] = [
-  { id: '1', timestamp: '2026-03-28 10:15:32', level: 'info', message: 'Bot connected to Discord gateway', platform: 'Discord' },
-  { id: '2', timestamp: '2026-03-28 10:15:30', level: 'info', message: 'Loaded 6 custom commands', platform: 'System' },
-  { id: '3', timestamp: '2026-03-28 10:14:58', level: 'warn', message: 'Rate limit approaching for AI responses (4/5 per hour)', platform: 'System' },
-  { id: '4', timestamp: '2026-03-28 10:14:12', level: 'info', message: 'AI response generated for user viewer_fan in #general', platform: 'Discord' },
-  { id: '5', timestamp: '2026-03-28 10:13:45', level: 'error', message: 'Failed to fetch user profile: API timeout after 5000ms', platform: 'Twitch' },
-  { id: '6', timestamp: '2026-03-28 10:12:30', level: 'debug', message: 'Memory store: 7 entries cached, 2 pending sync', platform: 'System' },
-  { id: '7', timestamp: '2026-03-28 10:11:15', level: 'info', message: 'Cron job "daily-stats" executed successfully', platform: 'System' },
-  { id: '8', timestamp: '2026-03-28 10:10:02', level: 'warn', message: 'Message from banned_user blocked by automod', platform: 'Discord' },
-  { id: '9', timestamp: '2026-03-28 10:09:18', level: 'info', message: 'Command !help executed by gamer_pro', platform: 'Discord' },
-  { id: '10', timestamp: '2026-03-28 10:08:44', level: 'error', message: 'Twitch EventSub subscription expired, re-subscribing', platform: 'Twitch' },
-  { id: '11', timestamp: '2026-03-28 10:07:33', level: 'debug', message: 'Heartbeat sent to Discord gateway (ack: 42ms)', platform: 'Discord' },
-  { id: '12', timestamp: '2026-03-28 10:06:10', level: 'info', message: 'User night_owl joined voice channel "Gaming"', platform: 'Discord' },
-];
-
 const levelStyles: Record<LogLevel, string> = {
   info: 'bg-accent-primary/10 text-accent-primary',
   warn: 'bg-warning/10 text-warning',
@@ -35,25 +21,58 @@ const levelStyles: Record<LogLevel, string> = {
 };
 
 export default function LogViewerPage() {
-  const [logs] = useState(sampleLogs);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date().toLocaleTimeString());
 
+  const fetchLogs = useCallback(async () => {
+    try {
+      const data = await authApi<LogEntry[]>('/moderation/actions');
+      // Map mod actions to log entries, normalizing fields as needed
+      const mapped: LogEntry[] = data.map((entry: Record<string, unknown>, i: number) => ({
+        id: (entry.id as string) || String(i),
+        timestamp: (entry.timestamp as string) || (entry.createdAt as string) || '',
+        level: (entry.level as LogLevel) || 'info',
+        message: (entry.message as string) || (entry.reason as string) || (entry.action as string) || '',
+        platform: (entry.platform as string) || 'System',
+      }));
+      setLogs(mapped);
+    } catch {
+      // keep existing logs on error
+    } finally {
+      setLoading(false);
+      setLastRefresh(new Date().toLocaleTimeString());
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
-      setLastRefresh(new Date().toLocaleTimeString());
+      fetchLogs();
     }, 5000);
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, fetchLogs]);
 
   const filtered = logs.filter((log) => {
     const matchesSearch = !search || log.message.toLowerCase().includes(search.toLowerCase()) || log.platform.toLowerCase().includes(search.toLowerCase());
     const matchesLevel = levelFilter === 'all' || log.level === levelFilter;
     return matchesSearch && matchesLevel;
   });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -127,7 +146,7 @@ export default function LogViewerPage() {
                     {log.timestamp}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium uppercase ${levelStyles[log.level]}`}>
+                    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium uppercase ${levelStyles[log.level] || levelStyles.info}`}>
                       {log.level}
                     </span>
                   </td>

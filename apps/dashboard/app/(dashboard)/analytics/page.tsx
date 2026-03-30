@@ -1,10 +1,49 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { authApi } from '@/lib/api';
+
+type OverviewStats = {
+  messages: { value: string; change: string };
+  modActions: { value: string; change: string };
+  aiConversations: { value: string; change: string };
+  cronRuns: { value: string; change: string };
+};
+
 export default function AnalyticsPage() {
-  const stats = [
-    { label: 'Messages', value: '24,891', change: '+14%', period: 'vs last 30 days' },
-    { label: 'Mod Actions', value: '342', change: '-8%', period: 'vs last 30 days' },
-    { label: 'AI Conversations', value: '1,205', change: '+32%', period: 'vs last 30 days' },
-    { label: 'Cron Runs', value: '720', change: '+2%', period: 'vs last 30 days' },
-  ];
+  const [data, setData] = useState<OverviewStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchOverview() {
+      try {
+        const res = await authApi<OverviewStats>('/analytics/overview');
+        setData(res);
+      } catch {
+        // silently fall back to empty
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchOverview();
+  }, []);
+
+  const stats = data
+    ? [
+        { label: 'Messages', value: data.messages.value, change: data.messages.change, period: 'vs last 30 days' },
+        { label: 'Mod Actions', value: data.modActions.value, change: data.modActions.change, period: 'vs last 30 days' },
+        { label: 'AI Conversations', value: data.aiConversations.value, change: data.aiConversations.change, period: 'vs last 30 days' },
+        { label: 'Cron Runs', value: data.cronRuns.value, change: data.cronRuns.change, period: 'vs last 30 days' },
+      ]
+    : [];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -24,6 +63,11 @@ export default function AnalyticsPage() {
             </p>
           </div>
         ))}
+        {stats.length === 0 && (
+          <div className="col-span-full rounded-xl border border-white/5 bg-background-elevated p-8 text-center">
+            <p className="text-sm text-text-muted">No analytics data available yet.</p>
+          </div>
+        )}
       </div>
 
       {/* Charts */}

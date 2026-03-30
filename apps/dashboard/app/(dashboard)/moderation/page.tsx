@@ -1,68 +1,26 @@
 'use client';
 
-const stats = [
-  { label: 'Total Actions (24h)', value: '147', change: '+8%', up: true },
-  { label: 'Active Bans', value: '23', change: '+2', up: true },
-  { label: 'Pending Appeals', value: '5', change: '-1', up: false },
-  { label: 'Auto-filtered Messages', value: '312', change: '+15%', up: true },
-];
+import { useState, useEffect } from 'react';
+import { authApi, ApiError } from '@/lib/api';
 
-const recentActions = [
-  {
-    id: 1,
-    user: 'toxic_user42',
-    platform: 'twitch',
-    action: 'ban',
-    reason: 'Repeated hate speech',
-    rule: 'Hate Speech Filter',
-    time: '2m ago',
-  },
-  {
-    id: 2,
-    user: 'spammer99',
-    platform: 'discord',
-    action: 'timeout',
-    reason: 'Posting invite links',
-    rule: 'Link Spam',
-    time: '8m ago',
-  },
-  {
-    id: 3,
-    user: 'new_viewer',
-    platform: 'twitch',
-    action: 'warn',
-    reason: 'Excessive caps',
-    rule: 'Caps Lock Filter',
-    time: '14m ago',
-  },
-  {
-    id: 4,
-    user: 'raid_bot_7',
-    platform: 'discord',
-    action: 'ban',
-    reason: 'Bot raid detected',
-    rule: 'Raid Protection',
-    time: '21m ago',
-  },
-  {
-    id: 5,
-    user: 'annoying_guy',
-    platform: 'twitch',
-    action: 'timeout',
-    reason: 'Symbol spam in chat',
-    rule: 'Symbol Spam',
-    time: '35m ago',
-  },
-  {
-    id: 6,
-    user: 'promo_account',
-    platform: 'discord',
-    action: 'warn',
-    reason: 'Self-promotion in #general',
-    rule: 'Self-Promo Filter',
-    time: '42m ago',
-  },
-];
+interface ModAction {
+  id: number;
+  timestamp: string;
+  user: string;
+  platform: 'twitch' | 'discord';
+  actionType: 'warn' | 'timeout' | 'ban';
+  reason: string;
+  rule: string;
+}
+
+interface BannedUser {
+  id: number;
+}
+
+interface Appeal {
+  id: number;
+  status: 'pending' | 'approved' | 'denied';
+}
 
 const actionColors: Record<string, string> = {
   warn: 'bg-warning/10 text-warning',
@@ -75,7 +33,70 @@ const platformColors: Record<string, string> = {
   discord: 'bg-indigo-500/10 text-indigo-400',
 };
 
+function timeAgo(timestamp: string): string {
+  const now = Date.now();
+  const then = new Date(timestamp).getTime();
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
 export default function ModerationPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actions, setActions] = useState<ModAction[]>([]);
+  const [bannedCount, setBannedCount] = useState(0);
+  const [pendingAppeals, setPendingAppeals] = useState(0);
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        setError(null);
+        const [actionsData, bannedData, appealsData] = await Promise.all([
+          authApi<ModAction[]>('/moderation/actions'),
+          authApi<BannedUser[]>('/moderation/banned'),
+          authApi<Appeal[]>('/moderation/appeals'),
+        ]);
+        setActions(actionsData);
+        setBannedCount(bannedData.length);
+        setPendingAppeals(appealsData.filter((a) => a.status === 'pending').length);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Failed to load moderation data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAll();
+  }, []);
+
+  const stats = [
+    { label: 'Total Actions (24h)', value: String(actions.length) },
+    { label: 'Active Bans', value: String(bannedCount) },
+    { label: 'Pending Appeals', value: String(pendingAppeals) },
+    { label: 'Auto-filtered Messages', value: String(actions.filter((a) => a.actionType === 'warn').length) },
+  ];
+
+  const recentActions = actions.slice(0, 6);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Moderation</h1>
+          <p className="mt-1 text-sm text-text-muted">Overview of moderation activity across platforms.</p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -83,15 +104,18 @@ export default function ModerationPage() {
         <p className="mt-1 text-sm text-text-muted">Overview of moderation activity across platforms.</p>
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+          {error}
+        </div>
+      )}
+
       {/* Stat Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
           <div key={stat.label} className="rounded-xl border border-white/5 bg-background-elevated p-4">
             <p className="text-xs font-medium text-text-muted">{stat.label}</p>
             <p className="mt-1 text-2xl font-bold text-text-primary">{stat.value}</p>
-            <p className={`mt-1 text-xs ${stat.up ? 'text-success' : 'text-danger'}`}>
-              {stat.change} vs yesterday
-            </p>
           </div>
         ))}
       </div>
@@ -121,12 +145,15 @@ export default function ModerationPage() {
                   {item.reason} &middot; Rule: {item.rule}
                 </p>
               </div>
-              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${actionColors[item.action]}`}>
-                {item.action}
+              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${actionColors[item.actionType]}`}>
+                {item.actionType}
               </span>
-              <span className="text-xs text-text-muted whitespace-nowrap">{item.time}</span>
+              <span className="text-xs text-text-muted whitespace-nowrap">{timeAgo(item.timestamp)}</span>
             </div>
           ))}
+          {recentActions.length === 0 && (
+            <p className="text-sm text-text-muted text-center py-4">No recent actions.</p>
+          )}
         </div>
       </div>
     </div>

@@ -68,11 +68,61 @@ export function clearTokens(): void {
   localStorage.removeItem('nexusbot_refresh_token');
 }
 
+let isRefreshing = false;
+
 export async function authApi<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const tokens = getTokens();
   if (!tokens) {
     window.location.href = `${WEB_URL}/login`;
     throw new ApiError(401, 'UNAUTHORIZED', 'Not logged in');
   }
-  return api<T>(path, { ...options, token: tokens.accessToken });
+
+  try {
+    return await api<T>(path, { ...options, token: tokens.accessToken });
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 401) {
+      throw err;
+    }
+
+    // Prevent infinite refresh loops
+    if (isRefreshing) {
+      clearTokens();
+      window.location.href = `${WEB_URL}/login`;
+      throw new ApiError(401, 'UNAUTHORIZED', 'Session expired');
+    }
+
+    isRefreshing = true;
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+      });
+
+      if (!res.ok) {
+        clearTokens();
+        window.location.href = `${WEB_URL}/login`;
+        throw new ApiError(401, 'UNAUTHORIZED', 'Session expired');
+      }
+
+      const json = await res.json();
+      const { accessToken, refreshToken } = json as {
+        accessToken: string;
+        refreshToken: string;
+      };
+      setTokens(accessToken, refreshToken);
+
+      // Retry the original request with the new access token
+      return await api<T>(path, { ...options, token: accessToken });
+    } catch (refreshErr) {
+      if (refreshErr instanceof ApiError) {
+        throw refreshErr;
+      }
+      clearTokens();
+      window.location.href = `${WEB_URL}/login`;
+      throw new ApiError(401, 'UNAUTHORIZED', 'Session expired');
+    } finally {
+      isRefreshing = false;
+    }
+  }
 }

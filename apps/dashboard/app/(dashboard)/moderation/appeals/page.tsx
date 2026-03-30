@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { authApi, ApiError } from '@/lib/api';
 
 interface Appeal {
   id: number;
@@ -12,59 +13,6 @@ interface Appeal {
   status: 'pending' | 'approved' | 'denied';
   submittedAt: string;
 }
-
-const initialAppeals: Appeal[] = [
-  {
-    id: 1,
-    username: 'night_troll',
-    platform: 'discord',
-    banDate: '2025-03-27',
-    banReason: 'Slurs and harassment',
-    appealMessage: 'I sincerely apologize for my behavior. I was frustrated after a bad day and took it out on others in the chat. I understand my words were harmful and I promise to follow community guidelines going forward.',
-    status: 'pending',
-    submittedAt: '2025-03-28 10:15',
-  },
-  {
-    id: 2,
-    username: 'spam_king',
-    platform: 'twitch',
-    banDate: '2025-03-26',
-    banReason: 'Excessive link spam',
-    appealMessage: 'I was sharing links to a community project and didn\'t realize I was breaking rules. I\'ll limit my link sharing if unbanned.',
-    status: 'pending',
-    submittedAt: '2025-03-28 08:42',
-  },
-  {
-    id: 3,
-    username: 'troll_streamer',
-    platform: 'twitch',
-    banDate: '2025-03-22',
-    banReason: 'Stream sniping + harassment',
-    appealMessage: 'I want to appeal my ban. I was not stream sniping -- I happened to be in the same game. The harassment accusation was a misunderstanding. Please review the VODs.',
-    status: 'pending',
-    submittedAt: '2025-03-27 22:30',
-  },
-  {
-    id: 4,
-    username: 'old_user123',
-    platform: 'discord',
-    banDate: '2025-03-15',
-    banReason: 'Posting NSFW content in SFW channel',
-    appealMessage: 'I accidentally posted in the wrong channel. It was not intentional. I have been a community member for 2 years.',
-    status: 'approved',
-    submittedAt: '2025-03-16 09:00',
-  },
-  {
-    id: 5,
-    username: 'bad_actor_55',
-    platform: 'discord',
-    banDate: '2025-03-10',
-    banReason: 'Doxxing attempt',
-    appealMessage: 'It was just a joke bro, I didn\'t actually share real info.',
-    status: 'denied',
-    submittedAt: '2025-03-11 14:20',
-  },
-];
 
 const statusColors: Record<string, string> = {
   pending: 'bg-warning/10 text-warning',
@@ -78,16 +26,59 @@ const platformColors: Record<string, string> = {
 };
 
 export default function AppealsPage() {
-  const [appeals, setAppeals] = useState<Appeal[]>(initialAppeals);
+  const [appeals, setAppeals] = useState<Appeal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
 
-  const handleAction = (id: number, action: 'approved' | 'denied') => {
-    setAppeals((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status: action } : a))
-    );
+  useEffect(() => {
+    const fetchAppeals = async () => {
+      try {
+        setError(null);
+        const data = await authApi<Appeal[]>('/moderation/appeals');
+        setAppeals(data);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Failed to load appeals');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAppeals();
+  }, []);
+
+  const handleAction = async (id: number, action: 'approved' | 'denied') => {
+    setUpdatingId(id);
+    try {
+      const updated = await authApi<Appeal>(`/moderation/appeals/${id}`, {
+        method: 'PUT',
+        body: { status: action },
+      });
+      setAppeals((prev) =>
+        prev.map((a) => (a.id === id ? updated : a))
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to update appeal');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const pending = appeals.filter((a) => a.status === 'pending');
   const resolved = appeals.filter((a) => a.status !== 'pending');
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Ban Appeals</h1>
+          <p className="mt-1 text-sm text-text-muted">Loading appeals...</p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -97,6 +88,13 @@ export default function AppealsPage() {
           {pending.length} pending appeal{pending.length !== 1 ? 's' : ''} to review.
         </p>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
+        </div>
+      )}
 
       {/* Pending Appeals */}
       {pending.length > 0 && (
@@ -142,13 +140,15 @@ export default function AppealsPage() {
               <div className="mt-4 flex gap-2 justify-end">
                 <button
                   onClick={() => handleAction(appeal.id, 'denied')}
-                  className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-1.5 text-xs font-medium text-danger hover:bg-danger/20 transition-colors"
+                  disabled={updatingId === appeal.id}
+                  className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-1.5 text-xs font-medium text-danger hover:bg-danger/20 transition-colors disabled:opacity-50"
                 >
                   Deny
                 </button>
                 <button
                   onClick={() => handleAction(appeal.id, 'approved')}
-                  className="rounded-lg bg-success px-4 py-1.5 text-xs font-medium text-white hover:bg-success/90 transition-colors"
+                  disabled={updatingId === appeal.id}
+                  className="rounded-lg bg-success px-4 py-1.5 text-xs font-medium text-white hover:bg-success/90 transition-colors disabled:opacity-50"
                 >
                   Approve
                 </button>

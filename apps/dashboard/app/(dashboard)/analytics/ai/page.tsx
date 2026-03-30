@@ -1,4 +1,53 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { authApi } from '@/lib/api';
+
+type AIStat = {
+  label: string;
+  value: string;
+};
+
+type Topic = {
+  topic: string;
+  count: number;
+  pct: number;
+};
+
+type AIAnalytics = {
+  stats: AIStat[];
+  topics: Topic[];
+};
+
 export default function AIAnalyticsPage() {
+  const [data, setData] = useState<AIAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const res = await authApi<AIAnalytics>('/analytics/ai');
+        setData(res);
+      } catch {
+        // silently fall back to empty
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  const stats = data?.stats ?? [];
+  const topics = data?.topics ?? [];
+
   return (
     <div className="space-y-6">
       <div>
@@ -9,17 +58,18 @@ export default function AIAnalyticsPage() {
 
       {/* Summary Stats */}
       <div className="grid gap-4 sm:grid-cols-4">
-        {[
-          { label: 'Conversations Today', value: '42' },
-          { label: 'Avg Response Time', value: '1.3s' },
-          { label: 'Tokens Used (24h)', value: '18.4k' },
-          { label: 'Satisfaction Rate', value: '94%' },
-        ].map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-white/5 bg-background-elevated p-4">
-            <p className="text-xs font-medium text-text-muted">{stat.label}</p>
-            <p className="mt-1 text-2xl font-bold text-text-primary">{stat.value}</p>
+        {stats.length === 0 ? (
+          <div className="col-span-full rounded-xl border border-white/5 bg-background-elevated p-8 text-center">
+            <p className="text-sm text-text-muted">No AI analytics data available yet.</p>
           </div>
-        ))}
+        ) : (
+          stats.map((stat) => (
+            <div key={stat.label} className="rounded-xl border border-white/5 bg-background-elevated p-4">
+              <p className="text-xs font-medium text-text-muted">{stat.label}</p>
+              <p className="mt-1 text-2xl font-bold text-text-primary">{stat.value}</p>
+            </div>
+          ))
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -55,24 +105,21 @@ export default function AIAnalyticsPage() {
           <h3 className="text-sm font-semibold text-text-primary">Most Discussed Topics</h3>
           <p className="mt-1 text-xs text-text-muted">Popular conversation themes</p>
           <div className="mt-4 space-y-2">
-            {[
-              { topic: 'Game strategies', count: 89, pct: 100 },
-              { topic: 'Stream schedule', count: 67, pct: 75 },
-              { topic: 'Bot commands help', count: 52, pct: 58 },
-              { topic: 'Server rules', count: 34, pct: 38 },
-              { topic: 'Clip highlights', count: 28, pct: 31 },
-              { topic: 'Tech support', count: 19, pct: 21 },
-            ].map((t) => (
-              <div key={t.topic}>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-text-secondary">{t.topic}</span>
-                  <span className="text-text-muted">{t.count} convos</span>
+            {topics.length === 0 ? (
+              <p className="text-sm text-text-muted py-4 text-center">No topic data available yet.</p>
+            ) : (
+              topics.map((t) => (
+                <div key={t.topic}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-text-secondary">{t.topic}</span>
+                    <span className="text-text-muted">{t.count} convos</span>
+                  </div>
+                  <div className="mt-1 h-1.5 rounded-full bg-white/5">
+                    <div className="h-full rounded-full bg-accent-primary" style={{ width: `${t.pct}%` }} />
+                  </div>
                 </div>
-                <div className="mt-1 h-1.5 rounded-full bg-white/5">
-                  <div className="h-full rounded-full bg-accent-primary" style={{ width: `${t.pct}%` }} />
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

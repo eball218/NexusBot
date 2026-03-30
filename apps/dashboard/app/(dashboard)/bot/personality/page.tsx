@@ -1,22 +1,84 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { authApi, ApiError } from '@/lib/api';
 
 const toneOptions = ['Friendly', 'Professional', 'Casual', 'Sarcastic', 'Enthusiastic', 'Calm'];
 const humorOptions = ['None', 'Subtle', 'Moderate', 'High', 'Maximum'];
 const formalityOptions = ['Very Casual', 'Casual', 'Balanced', 'Formal', 'Very Formal'];
 
+const humorToNumber: Record<string, number> = { 'None': 1, 'Subtle': 2, 'Moderate': 3, 'High': 4, 'Maximum': 5 };
+const numberToHumor: Record<number, string> = { 1: 'None', 2: 'Subtle', 3: 'Moderate', 4: 'High', 5: 'Maximum' };
+
+const formalityToNumber: Record<string, number> = { 'Very Casual': 1, 'Casual': 2, 'Balanced': 3, 'Formal': 4, 'Very Formal': 5 };
+const numberToFormality: Record<number, string> = { 1: 'Very Casual', 2: 'Casual', 3: 'Balanced', 4: 'Formal', 5: 'Very Formal' };
+
+interface PersonalityConfig {
+  identity: string;
+  traits: string[];
+  tone: string;
+  humor: number;
+  formality: number;
+  communicationStyle: string;
+  lore: string[];
+  catchphrases: string[];
+}
+
+interface PersonalityResponse {
+  id?: string;
+  name: string;
+  config: PersonalityConfig;
+}
+
+const DEFAULT_NAME = 'NexusBot';
+const DEFAULT_IDENTITY = 'A helpful and witty AI assistant for the community. Loves gaming, technology, and bad puns. Always eager to help newcomers feel welcome.';
+const DEFAULT_TRAITS = ['Helpful', 'Witty', 'Knowledgeable', 'Patient'];
+const DEFAULT_TONE = 'Friendly';
+const DEFAULT_HUMOR = 'Moderate';
+const DEFAULT_FORMALITY = 'Casual';
+
 export default function PersonalityPage() {
-  const [name, setName] = useState('NexusBot');
-  const [identity, setIdentity] = useState(
-    'A helpful and witty AI assistant for the community. Loves gaming, technology, and bad puns. Always eager to help newcomers feel welcome.'
-  );
-  const [traits, setTraits] = useState(['Helpful', 'Witty', 'Knowledgeable', 'Patient']);
+  const [name, setName] = useState(DEFAULT_NAME);
+  const [identity, setIdentity] = useState(DEFAULT_IDENTITY);
+  const [traits, setTraits] = useState<string[]>(DEFAULT_TRAITS);
   const [traitInput, setTraitInput] = useState('');
-  const [tone, setTone] = useState('Friendly');
-  const [humor, setHumor] = useState('Moderate');
-  const [formality, setFormality] = useState('Casual');
+  const [tone, setTone] = useState(DEFAULT_TONE);
+  const [humor, setHumor] = useState(DEFAULT_HUMOR);
+  const [formality, setFormality] = useState(DEFAULT_FORMALITY);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPersonality = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await authApi<PersonalityResponse>('/personality');
+      if (data) {
+        setName(data.name || DEFAULT_NAME);
+        const c = data.config;
+        setIdentity(c.identity || DEFAULT_IDENTITY);
+        setTraits(c.traits?.length ? c.traits : DEFAULT_TRAITS);
+        setTone(c.tone || DEFAULT_TONE);
+        setHumor(numberToHumor[c.humor] || DEFAULT_HUMOR);
+        setFormality(numberToFormality[c.formality] || DEFAULT_FORMALITY);
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        // No personality saved yet -- keep defaults
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to load personality');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPersonality();
+  }, [loadPersonality]);
 
   function addTrait() {
     const trimmed = traitInput.trim();
@@ -30,14 +92,56 @@ export default function PersonalityPage() {
     setTraits(traits.filter((t) => t !== trait));
   }
 
-  function handleSave() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await authApi('/personality', {
+        method: 'PUT',
+        body: {
+          name,
+          config: {
+            identity,
+            traits,
+            tone,
+            humor: humorToNumber[humor] ?? 3,
+            formality: formalityToNumber[formality] ?? 2,
+            communicationStyle: tone,
+            lore: [],
+            catchphrases: [],
+          },
+        },
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save personality');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+        <span className="ml-3 text-sm text-text-muted">Loading personality...</span>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-text-primary">AI Persona Editor</h1>
+
+      {error && (
+        <div className="rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+          {error}
+          <button onClick={() => setError(null)} className="ml-3 underline hover:no-underline">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Form */}
@@ -158,9 +262,10 @@ export default function PersonalityPage() {
           {/* Save */}
           <button
             onClick={handleSave}
-            className="rounded-lg bg-accent-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-accent-primary/90 transition-colors"
+            disabled={saving}
+            className="rounded-lg bg-accent-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-accent-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saved ? 'Saved!' : 'Save Persona'}
+            {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Persona'}
           </button>
         </div>
 
