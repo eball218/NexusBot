@@ -591,6 +591,11 @@ async function handleMessage(
   replyFn: (text: string) => Promise<void>,
   isMention: boolean,
 ): Promise<void> {
+  logger.info(
+    { tag: 'pipeline', db: !!db, tenant: resolvedTenantId, rulesCount: cachedRules.length, cmdsCount: cachedCommands.length, content, platform },
+    'Pipeline start',
+  );
+
   // 1. Find/create community user
   let communityUserId: string | null = null;
   if (db && resolvedTenantId) {
@@ -724,9 +729,14 @@ async function startDiscord() {
 
     logger.info({ tag: 'discord', author: authorName, content }, 'Message received from user');
 
-    await handleMessage(content, authorId, authorName, 'discord', channelId, channelName, async (text) => {
-      await message.reply(text);
-    }, isMention);
+    try {
+      await handleMessage(content, authorId, authorName, 'discord', channelId, channelName, async (text) => {
+        await message.reply(text);
+      }, isMention);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.stack || err.message : String(err);
+      logger.error({ tag: 'discord', error: errMsg }, 'handleMessage threw an exception');
+    }
   });
 
   await client.login(DISCORD_BOT_TOKEN);
@@ -760,9 +770,14 @@ async function startTwitch() {
     // Check if the bot is mentioned
     const isMention = text.toLowerCase().includes(BOT_NAME.toLowerCase());
 
-    await handleMessage(text, userId, user, 'twitch', channelName, channelName, async (reply) => {
-      chatClient.say(channel, reply);
-    }, isMention);
+    try {
+      await handleMessage(text, userId, user, 'twitch', channelName, channelName, async (reply) => {
+        chatClient.say(channel, reply);
+      }, isMention);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.stack || err.message : String(err);
+      logger.error({ tag: 'twitch', error: errMsg }, 'handleMessage threw an exception');
+    }
   });
 
   await chatClient.connect();
