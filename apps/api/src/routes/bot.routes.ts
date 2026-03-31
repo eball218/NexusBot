@@ -64,9 +64,20 @@ export async function botRoutes(app: FastifyInstance) {
     const db = getDb();
     const tenantId = request.user!.tenantId!;
 
+    const existing = await db
+      .select({ id: botInstances.id })
+      .from(botInstances)
+      .where(eq(botInstances.tenantId, tenantId))
+      .limit(1);
+
+    if (!existing.length) {
+      reply.status(404).send({ error: 'No bot instance found. Connect a platform first.', code: 'NOT_FOUND' });
+      return;
+    }
+
     await db
       .update(botInstances)
-      .set({ status: 'starting', updatedAt: new Date() })
+      .set({ status: 'starting', startedAt: new Date(), updatedAt: new Date() })
       .where(eq(botInstances.tenantId, tenantId));
 
     reply.send({ data: { message: 'Bot starting' } });
@@ -94,7 +105,8 @@ export async function botRoutes(app: FastifyInstance) {
       .update(botInstances)
       .set({
         status: 'starting',
-        restartCount: sql`${botInstances.restartCount} + 1`,
+        restartCount: sql`"restart_count" + 1`,
+        startedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(botInstances.tenantId, tenantId));

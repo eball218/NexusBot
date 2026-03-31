@@ -22,18 +22,25 @@ export class ApiError extends Error {
 export async function api<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', body, token } = options;
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const headers: Record<string, string> = {};
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // For requests with a body (or POST/PUT/PATCH/DELETE that might expect one),
+  // always send JSON so Fastify's parser doesn't choke on empty bodies
+  const hasBody = body !== undefined && body !== null;
+  const needsBody = method !== 'GET' && method !== 'HEAD';
+  const jsonBody = hasBody ? JSON.stringify(body) : needsBody ? '{}' : undefined;
+  if (jsonBody !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: jsonBody,
   });
 
   const json = await res.json();
