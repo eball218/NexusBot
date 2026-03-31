@@ -488,11 +488,15 @@ function matchCommand(
 
   for (const cmd of cachedCommands) {
     if (!cmd.enabled) continue;
-    if (cmd.platform !== 'both' && cmd.platform !== platform) continue;
+    // Accept 'both', 'all', or 'All' as "any platform"
+    const plat = cmd.platform.toLowerCase();
+    if (plat !== 'both' && plat !== 'all' && plat !== platform) continue;
 
     // Match command (with or without ! prefix)
     const trigger = cmd.command.startsWith('!') ? cmd.command.toLowerCase() : `!${cmd.command.toLowerCase()}`;
-    if (lower !== trigger && lower !== cmd.command.toLowerCase()) continue;
+    // Strip Discord mentions from beginning of message for matching
+    const stripped = lower.replace(/^<@!?\d+>\s*/g, '').trim();
+    if (stripped !== trigger && stripped !== cmd.command.toLowerCase() && lower !== trigger && lower !== cmd.command.toLowerCase()) continue;
 
     // Check cooldown
     const cooldownKey = `${cmd.id}:${platform}:${channelId}`;
@@ -655,13 +659,11 @@ async function handleMessage(
     }
   }
 
-  // 5. Fallback bot responses when no DB commands are loaded
-  if (cachedCommands.length === 0) {
-    const fallback = getFallbackResponse(content, authorName);
-    if (fallback) {
-      await replyFn(fallback);
-      logger.info({ tag: 'fallback', platform, author: authorName }, 'Fallback response');
-    }
+  // 5. Built-in fallback responses (always available as a safety net)
+  const fallback = getFallbackResponse(content, authorName);
+  if (fallback) {
+    await replyFn(fallback);
+    logger.info({ tag: 'fallback', platform, author: authorName }, 'Fallback response');
   }
 }
 
