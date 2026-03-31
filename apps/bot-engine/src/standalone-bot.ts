@@ -19,6 +19,7 @@ import {
   aiPersonalities,
   aiConversations,
   aiMessages,
+  botInstances,
 } from '@nexusbot/db';
 import { ChatEngine, type ChatEngineConfig } from './ai/chat-engine';
 
@@ -58,6 +59,69 @@ const BOT_NAME = process.env.BOT_NAME || 'NexusBot';
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const TENANT_ID = process.env.TENANT_ID || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+
+// ---------------------------------------------------------------------------
+// Bot instance registration & heartbeat
+// ---------------------------------------------------------------------------
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+const botStartedAt = new Date();
+
+async function registerBotInstance(platform: string) {
+  if (!db || !resolvedTenantId) return;
+  try {
+    // Upsert: insert or update on conflict (tenant + platform)
+    await db
+      .insert(botInstances)
+      .values({
+        tenantId: resolvedTenantId,
+        platform: platform as 'twitch' | 'discord',
+        status: 'running',
+        startedAt: botStartedAt,
+        lastHeartbeatAt: new Date(),
+        config: {},
+      })
+      .onConflictDoUpdate({
+        target: [botInstances.tenantId, botInstances.platform],
+        set: {
+          status: 'running',
+          startedAt: botStartedAt,
+          lastHeartbeatAt: new Date(),
+          lastError: null,
+          updatedAt: new Date(),
+        },
+      });
+    logger.info({ tag: 'heartbeat', platform }, 'Bot instance registered');
+  } catch (err) {
+    logger.error({ tag: 'heartbeat', error: err instanceof Error ? err.message : String(err) }, 'Failed to register bot instance');
+  }
+}
+
+function startHeartbeat() {
+  if (heartbeatInterval) return;
+  heartbeatInterval = setInterval(async () => {
+    if (!db || !resolvedTenantId) return;
+    try {
+      await db
+        .update(botInstances)
+        .set({ lastHeartbeatAt: new Date(), status: 'running', updatedAt: new Date() })
+        .where(eq(botInstances.tenantId, resolvedTenantId));
+    } catch {
+      // silently ignore heartbeat failures
+    }
+  }, 30_000); // every 30 seconds
+}
+
+async function markBotStopped() {
+  if (!db || !resolvedTenantId) return;
+  try {
+    await db
+      .update(botInstances)
+      .set({ status: 'stopped', stoppedAt: new Date(), updatedAt: new Date() })
+      .where(eq(botInstances.tenantId, resolvedTenantId));
+  } catch {
+    // best effort
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -835,18 +899,23 @@ async function main() {
     }
   });
 
+  // 6. Register bot instances in DB so dashboard can see status
+  if (results[0].status === 'fulfilled') await registerBotInstance('discord');
+  if (results[1].status === 'fulfilled') await registerBotInstance('twitch');
+  startHeartbeat();
+
   logger.info('Bot engine running. Press Ctrl+C to stop.');
 }
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+async function shutdown() {
   logger.info('Shutting down...');
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  await markBotStopped();
   process.exit(0);
-});
-process.on('SIGINT', () => {
-  logger.info('Shutting down...');
-  process.exit(0);
-});
+}
+process.on('SIGTERM', () => { shutdown(); });
+process.on('SIGINT', () => { shutdown(); });
 
 main().catch((err) => {
   logger.fatal(err, 'Bot engine crashed');

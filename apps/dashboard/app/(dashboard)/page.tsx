@@ -174,7 +174,7 @@ export default function DashboardHome() {
               </h2>
               <p className="text-sm text-text-muted">
                 {isNotConfigured
-                  ? 'Set up your bot in Connections'
+                  ? <a href="/connections" className="text-accent-primary hover:underline">Set up your bot in Connections &rarr;</a>
                   : isOnline
                     ? `Connected to ${botStatus?.platform ?? 'platform'}${botStatus?.uptime ? ` \u00b7 Uptime: ${formatUptime(botStatus.uptime)}` : ''}`
                     : 'Bot is currently offline'}
@@ -182,9 +182,9 @@ export default function DashboardHome() {
             </div>
           </div>
           {!isNotConfigured && (
-            <button className="rounded-lg border border-white/10 px-4 py-2 text-sm text-text-secondary hover:bg-white/5">
-              Restart Bot
-            </button>
+            <a href="/bot" className="rounded-lg border border-white/10 px-4 py-2 text-sm text-text-secondary hover:bg-white/5">
+              Manage Bot
+            </a>
           )}
         </div>
       </div>

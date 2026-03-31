@@ -23,10 +23,40 @@ export async function botRoutes(app: FastifyInstance) {
     const instances = await db
       .select()
       .from(botInstances)
-      .where(eq(botInstances.tenantId, tenantId))
-      .limit(1);
+      .where(eq(botInstances.tenantId, tenantId));
 
-    reply.send({ data: instances[0] ?? { status: 'not_configured' } });
+    if (!instances.length) {
+      reply.send({ data: { status: 'not_configured' } });
+      return;
+    }
+
+    // Aggregate status across all platform instances (discord, twitch)
+    const running = instances.filter((i) => i.status === 'running');
+    const platforms = instances.map((i) => i.platform);
+    const primaryInstance = running[0] ?? instances[0];
+
+    // Compute uptime in seconds from startedAt
+    let uptime: number | undefined;
+    if (primaryInstance.status === 'running' && primaryInstance.startedAt) {
+      uptime = Math.floor((Date.now() - new Date(primaryInstance.startedAt).getTime()) / 1000);
+    }
+
+    reply.send({
+      data: {
+        status: running.length > 0 ? 'running' : primaryInstance.status,
+        platform: platforms.join(', '),
+        uptime,
+        lastHeartbeatAt: primaryInstance.lastHeartbeatAt,
+        lastError: primaryInstance.lastError,
+        instances: instances.map((i) => ({
+          id: i.id,
+          platform: i.platform,
+          status: i.status,
+          startedAt: i.startedAt,
+          lastHeartbeatAt: i.lastHeartbeatAt,
+        })),
+      },
+    });
   });
 
   // POST /api/v1/bot/start
