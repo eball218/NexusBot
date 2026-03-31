@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { authApi, ApiError } from '@/lib/api';
 
 interface Rule {
-  id: number;
+  id: string;
   ruleType: string;
-  pattern: string;
+  pattern: string | null;
   severity: number;
   action: 'warn' | 'timeout' | 'ban';
   platforms: string;
@@ -67,8 +67,8 @@ export default function ModerationRulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [submitting, setSubmitting] = useState(false);
-  const [togglingId, setTogglingId] = useState<number | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchRules = async () => {
     try {
@@ -86,7 +86,7 @@ export default function ModerationRulesPage() {
     fetchRules();
   }, []);
 
-  const toggleRule = async (id: number) => {
+  const toggleRule = async (id: string) => {
     setTogglingId(id);
     try {
       const updated = await authApi<Rule>(`/moderation/rules/${id}/toggle`, { method: 'PATCH' });
@@ -98,7 +98,7 @@ export default function ModerationRulesPage() {
     }
   };
 
-  const deleteRule = async (id: number) => {
+  const deleteRule = async (id: string) => {
     setDeletingId(id);
     try {
       await authApi(`/moderation/rules/${id}`, { method: 'DELETE' });

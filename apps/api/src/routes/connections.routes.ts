@@ -15,7 +15,14 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const tenantId = request.user!.tenantId!;
 
     const connections = await db
-      .select()
+      .select({
+        id: platformConnections.id,
+        platform: platformConnections.platform,
+        platformUserId: platformConnections.platformUserId,
+        platformUsername: platformConnections.platformUsername,
+        isActive: platformConnections.isActive,
+        connectedAt: platformConnections.connectedAt,
+      })
       .from(platformConnections)
       .where(eq(platformConnections.tenantId, tenantId));
 

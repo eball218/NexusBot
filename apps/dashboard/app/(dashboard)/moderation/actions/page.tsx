@@ -3,14 +3,39 @@
 import { useState, useEffect } from 'react';
 import { authApi, ApiError } from '@/lib/api';
 
+interface ModActionRaw {
+  id: string;
+  communityUserId: string;
+  platform: string;
+  actionType: string;
+  reason: string | null;
+  performedBy: string;
+  performedAt: string;
+  ruleId: string | null;
+  originalMessage: string | null;
+  active: boolean;
+}
+
 interface ModAction {
-  id: number;
+  id: string;
   timestamp: string;
   user: string;
   platform: 'twitch' | 'discord';
   actionType: 'warn' | 'timeout' | 'ban';
   reason: string;
   rule: string;
+}
+
+function mapAction(raw: ModActionRaw): ModAction {
+  return {
+    id: raw.id,
+    timestamp: new Date(raw.performedAt).toLocaleString(),
+    user: raw.communityUserId.slice(0, 8) + '...',
+    platform: (raw.platform as 'twitch' | 'discord') || 'discord',
+    actionType: (raw.actionType as 'warn' | 'timeout' | 'ban') || 'warn',
+    reason: raw.reason || raw.originalMessage || 'No reason',
+    rule: raw.ruleId ? raw.ruleId.slice(0, 8) + '...' : 'Manual',
+  };
 }
 
 const actionTypeColors: Record<string, string> = {
@@ -37,8 +62,8 @@ export default function ModerationActionsPage() {
     const fetchActions = async () => {
       try {
         setError(null);
-        const data = await authApi<ModAction[]>('/moderation/actions');
-        setAllActions(data);
+        const data = await authApi<ModActionRaw[]>('/moderation/actions');
+        setAllActions(data.map(mapAction));
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Failed to load actions');
       } finally {

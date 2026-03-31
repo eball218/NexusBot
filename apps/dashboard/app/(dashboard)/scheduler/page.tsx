@@ -3,6 +3,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authApi } from '@/lib/api';
 
+type JobRaw = {
+  id: string;
+  name: string;
+  cronExpression: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastError: string | null;
+  platform: string;
+  enabled: boolean;
+};
+
 type Job = {
   id: string;
   name: string;
@@ -14,6 +25,47 @@ type Job = {
   enabled: boolean;
 };
 
+const cronToHuman: Record<string, string> = {
+  '0 * * * *': 'Every hour',
+  '*/30 * * * *': 'Every 30 minutes',
+  '0 9 * * *': 'Daily at 9 AM',
+  '0 18 * * *': 'Daily at 6 PM',
+  '0 9 * * 1': 'Every Monday',
+  '0 9 * * 1-5': 'Weekdays at 9 AM',
+  '*/15 * * * *': 'Every 15 minutes',
+  '0 0 1 * *': 'First of month',
+  '*/5 * * * *': 'Every 5 minutes',
+};
+
+function formatCron(cron: string): string {
+  return cronToHuman[cron] || cron;
+}
+
+function formatNextRun(iso: string | null): string {
+  if (!iso) return 'Not scheduled';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  if (diffMs < 0) return 'Overdue';
+  if (diffMs < 60000) return 'Less than a minute';
+  if (diffMs < 3600000) return `${Math.round(diffMs / 60000)}m`;
+  if (diffMs < 86400000) return `${Math.round(diffMs / 3600000)}h`;
+  return d.toLocaleDateString();
+}
+
+function mapJob(raw: JobRaw): Job {
+  return {
+    id: raw.id,
+    name: raw.name,
+    schedule: raw.cronExpression,
+    humanSchedule: formatCron(raw.cronExpression),
+    nextRun: formatNextRun(raw.nextRunAt),
+    lastStatus: raw.lastError ? 'failed' : raw.lastRunAt ? 'success' : 'pending',
+    platform: raw.platform,
+    enabled: raw.enabled,
+  };
+}
+
 export default function SchedulerPage() {
   const [jobList, setJobList] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,8 +73,8 @@ export default function SchedulerPage() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const data = await authApi<Job[]>('/scheduler/jobs');
-      setJobList(data);
+      const data = await authApi<JobRaw[]>('/scheduler/jobs');
+      setJobList(data.map(mapJob));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load jobs');
@@ -129,11 +181,15 @@ export default function SchedulerPage() {
                   className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
                     job.lastStatus === 'success'
                       ? 'bg-success/10 text-success'
-                      : 'bg-danger/10 text-danger'
+                      : job.lastStatus === 'pending'
+                        ? 'bg-white/5 text-text-muted'
+                        : 'bg-danger/10 text-danger'
                   }`}
                 >
-                  <span className={`h-1.5 w-1.5 rounded-full ${job.lastStatus === 'success' ? 'bg-success' : 'bg-danger'}`} />
-                  {job.lastStatus === 'success' ? 'Success' : 'Failed'}
+                  <span className={`h-1.5 w-1.5 rounded-full ${
+                    job.lastStatus === 'success' ? 'bg-success' : job.lastStatus === 'pending' ? 'bg-text-muted' : 'bg-danger'
+                  }`} />
+                  {job.lastStatus === 'success' ? 'Success' : job.lastStatus === 'pending' ? 'Pending' : 'Failed'}
                 </span>
               </div>
 

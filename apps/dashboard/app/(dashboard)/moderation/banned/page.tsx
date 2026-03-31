@@ -3,14 +3,41 @@
 import { useState, useEffect } from 'react';
 import { authApi, ApiError } from '@/lib/api';
 
+interface BannedUserRaw {
+  id: string;
+  twitchUsername: string | null;
+  discordUsername: string | null;
+  twitchId: string | null;
+  discordId: string | null;
+  isBanned: boolean;
+  notes: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string | null;
+}
+
 interface BannedUser {
-  id: number;
+  id: string;
   username: string;
   platforms: ('twitch' | 'discord')[];
   banDate: string;
   reason: string;
-  type: 'permanent' | 'temporary';
+  type: 'permanent';
   expires: string | null;
+}
+
+function mapBannedUser(raw: BannedUserRaw): BannedUser {
+  const platforms: ('twitch' | 'discord')[] = [];
+  if (raw.twitchId) platforms.push('twitch');
+  if (raw.discordId) platforms.push('discord');
+  return {
+    id: raw.id,
+    username: raw.twitchUsername || raw.discordUsername || 'Unknown',
+    platforms,
+    banDate: new Date(raw.firstSeenAt).toLocaleDateString(),
+    reason: raw.notes || 'No reason provided',
+    type: 'permanent',
+    expires: null,
+  };
 }
 
 const platformColors: Record<string, string> = {
@@ -22,14 +49,14 @@ export default function BannedUsersPage() {
   const [banned, setBanned] = useState<BannedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [unbanningId, setUnbanningId] = useState<number | null>(null);
+  const [unbanningId, setUnbanningId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchBanned = async () => {
       try {
         setError(null);
-        const data = await authApi<BannedUser[]>('/moderation/banned');
-        setBanned(data);
+        const data = await authApi<BannedUserRaw[]>('/moderation/banned');
+        setBanned(data.map(mapBannedUser));
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Failed to load banned users');
       } finally {
@@ -39,7 +66,7 @@ export default function BannedUsersPage() {
     fetchBanned();
   }, []);
 
-  const handleUnban = async (id: number) => {
+  const handleUnban = async (id: string) => {
     setUnbanningId(id);
     try {
       await authApi(`/moderation/banned/${id}/unban`, { method: 'POST' });

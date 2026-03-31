@@ -8,8 +8,8 @@ interface Connection {
   id: string;
   platform: 'twitch' | 'discord';
   platformUsername?: string;
-  platformId?: string;
-  status: string;
+  platformUserId?: string;
+  isActive: boolean;
 }
 
 const DISCORD_CLIENT_ID = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID || '1487664355901177977';

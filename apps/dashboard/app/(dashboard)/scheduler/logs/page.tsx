@@ -3,6 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authApi } from '@/lib/api';
 
+type LogEntryRaw = {
+  id: string;
+  jobId: string;
+  startedAt: string;
+  completedAt: string | null;
+  status: string;
+  error: string | null;
+  result: string | null;
+};
+
 type LogEntry = {
   id: string;
   job: string;
@@ -12,6 +22,29 @@ type LogEntry = {
   error: string | null;
 };
 
+function formatDuration(start: string, end: string | null): string {
+  if (!end) return 'Running...';
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+}
+
+function formatTimestamp(iso: string): string {
+  return new Date(iso).toLocaleString();
+}
+
+function mapLog(raw: LogEntryRaw): LogEntry {
+  return {
+    id: raw.id,
+    job: raw.jobId.slice(0, 8) + '...',
+    startedAt: formatTimestamp(raw.startedAt),
+    duration: formatDuration(raw.startedAt, raw.completedAt),
+    status: raw.status,
+    error: raw.error,
+  };
+}
+
 export default function SchedulerLogsPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,8 +53,8 @@ export default function SchedulerLogsPage() {
 
   const fetchLogs = useCallback(async () => {
     try {
-      const data = await authApi<LogEntry[]>('/scheduler/logs');
-      setLogs(data);
+      const data = await authApi<LogEntryRaw[]>('/scheduler/logs');
+      setLogs(data.map(mapLog));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load logs');

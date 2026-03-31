@@ -3,8 +3,29 @@
 import { useState, useEffect } from 'react';
 import { authApi, ApiError } from '@/lib/api';
 
+interface AppealRaw {
+  appeal: {
+    id: string;
+    modActionId: string;
+    communityUserId: string;
+    appealMessage: string;
+    status: 'pending' | 'approved' | 'denied';
+    resolvedBy: string | null;
+    resolvedAt: string | null;
+    resolutionNote: string | null;
+    createdAt: string;
+  };
+  communityUser: {
+    id: string;
+    twitchUsername: string | null;
+    discordUsername: string | null;
+    twitchId: string | null;
+    discordId: string | null;
+  };
+}
+
 interface Appeal {
-  id: number;
+  id: string;
   username: string;
   platform: 'twitch' | 'discord';
   banDate: string;
@@ -12,6 +33,20 @@ interface Appeal {
   appealMessage: string;
   status: 'pending' | 'approved' | 'denied';
   submittedAt: string;
+}
+
+function mapAppeal(raw: AppealRaw): Appeal {
+  const cu = raw.communityUser;
+  return {
+    id: raw.appeal.id,
+    username: cu.twitchUsername || cu.discordUsername || 'Unknown',
+    platform: cu.twitchId ? 'twitch' : 'discord',
+    banDate: new Date(raw.appeal.createdAt).toLocaleDateString(),
+    banReason: raw.appeal.resolutionNote || 'Moderation action',
+    appealMessage: raw.appeal.appealMessage,
+    status: raw.appeal.status,
+    submittedAt: new Date(raw.appeal.createdAt).toLocaleDateString(),
+  };
 }
 
 const statusColors: Record<string, string> = {
@@ -29,14 +64,14 @@ export default function AppealsPage() {
   const [appeals, setAppeals] = useState<Appeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAppeals = async () => {
       try {
         setError(null);
-        const data = await authApi<Appeal[]>('/moderation/appeals');
-        setAppeals(data);
+        const data = await authApi<AppealRaw[]>('/moderation/appeals');
+        setAppeals(data.map(mapAppeal));
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Failed to load appeals');
       } finally {
@@ -46,15 +81,15 @@ export default function AppealsPage() {
     fetchAppeals();
   }, []);
 
-  const handleAction = async (id: number, action: 'approved' | 'denied') => {
+  const handleAction = async (id: string, action: 'approved' | 'denied') => {
     setUpdatingId(id);
     try {
-      const updated = await authApi<Appeal>(`/moderation/appeals/${id}`, {
+      await authApi(`/moderation/appeals/${id}`, {
         method: 'PUT',
         body: { status: action },
       });
       setAppeals((prev) =>
-        prev.map((a) => (a.id === id ? updated : a))
+        prev.map((a) => (a.id === id ? { ...a, status: action } : a))
       );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to update appeal');

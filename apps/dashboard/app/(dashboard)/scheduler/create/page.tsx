@@ -36,7 +36,14 @@ export default function SchedulerCreatePage() {
     try {
       await authApi('/scheduler/jobs', {
         method: 'POST',
-        body: { name, schedule, platform, actionType, message, channel },
+        body: {
+          name,
+          cronExpression: schedule,
+          platform,
+          actionType,
+          actionParams: { message, channel },
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        },
       });
       router.push('/scheduler');
     } catch (err) {
