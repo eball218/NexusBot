@@ -158,6 +158,9 @@ let cachedRules: DbModRule[] = [];
 let cachedCommands: DbBotCommand[] = [];
 let cachedPersonality: Record<string, unknown> = {};
 
+// Per-platform enabled status from botInstances table
+let platformEnabled: Record<string, boolean> = { discord: true, twitch: true };
+
 // Command cooldowns: Map<"commandId:platform:channelOrUser", lastUsedTimestamp>
 const commandCooldowns = new Map<string, number>();
 
@@ -277,8 +280,20 @@ async function loadConfigFromDb(): Promise<void> {
       });
     }
 
+    // Load bot instance status (running/stopped) for each platform
+    const instances = await db
+      .select({ platform: botInstances.platform, status: botInstances.status })
+      .from(botInstances)
+      .where(eq(botInstances.tenantId, resolvedTenantId));
+
+    const newEnabled: Record<string, boolean> = { discord: true, twitch: true };
+    for (const inst of instances) {
+      newEnabled[inst.platform] = inst.status === 'running' || inst.status === 'starting';
+    }
+    platformEnabled = newEnabled;
+
     logger.info(
-      { tag: 'config', rules: cachedRules.length, commands: cachedCommands.length, hasPersonality: !!personality },
+      { tag: 'config', rules: cachedRules.length, commands: cachedCommands.length, hasPersonality: !!personality, platformEnabled },
       'Config loaded from database',
     );
   } catch (err: unknown) {
@@ -659,6 +674,12 @@ async function handleMessage(
   replyFn: (text: string) => Promise<void>,
   isMention: boolean,
 ): Promise<void> {
+  // Check if this platform is enabled (dashboard can stop the bot)
+  if (!platformEnabled[platform]) {
+    logger.debug({ tag: 'pipeline', platform }, 'Skipping message — bot is stopped for this platform');
+    return;
+  }
+
   logger.info(
     { tag: 'pipeline', db: !!db, tenant: resolvedTenantId, rulesCount: cachedRules.length, cmdsCount: cachedCommands.length, content, platform },
     'Pipeline start',
@@ -858,7 +879,7 @@ function startConfigRefresh() {
   setInterval(async () => {
     logger.debug({ tag: 'config' }, 'Refreshing config from database...');
     await loadConfigFromDb();
-  }, 60_000);
+  }, 15_000); // every 15 seconds — quick enough for dashboard stop/start
 }
 
 // ===== MAIN =====
