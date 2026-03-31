@@ -3,21 +3,22 @@
 import { useState, useEffect } from 'react';
 import { authApi } from '@/lib/api';
 
-type OverviewStats = {
-  messages: { value: string; change: string };
-  modActions: { value: string; change: string };
-  aiConversations: { value: string; change: string };
-  cronRuns: { value: string; change: string };
+type OverviewData = {
+  messages24h: number;
+  modActions24h: number;
+  aiConversations24h: number;
+  cronRuns24h: number;
+  activeCronJobs: number;
 };
 
 export default function AnalyticsPage() {
-  const [data, setData] = useState<OverviewStats | null>(null);
+  const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchOverview() {
       try {
-        const res = await authApi<OverviewStats>('/analytics/overview');
+        const res = await authApi<OverviewData>('/analytics/overview');
         setData(res);
       } catch {
         // silently fall back to empty
@@ -30,10 +31,10 @@ export default function AnalyticsPage() {
 
   const stats = data
     ? [
-        { label: 'Messages', value: data.messages.value, change: data.messages.change, period: 'vs last 30 days' },
-        { label: 'Mod Actions', value: data.modActions.value, change: data.modActions.change, period: 'vs last 30 days' },
-        { label: 'AI Conversations', value: data.aiConversations.value, change: data.aiConversations.change, period: 'vs last 30 days' },
-        { label: 'Cron Runs', value: data.cronRuns.value, change: data.cronRuns.change, period: 'vs last 30 days' },
+        { label: 'Messages (24h)', value: String(data.messages24h) },
+        { label: 'Mod Actions (24h)', value: String(data.modActions24h) },
+        { label: 'AI Conversations (24h)', value: String(data.aiConversations24h) },
+        { label: 'Cron Runs (24h)', value: String(data.cronRuns24h) },
       ]
     : [];
 
@@ -58,9 +59,6 @@ export default function AnalyticsPage() {
           <div key={stat.label} className="rounded-xl border border-white/5 bg-background-elevated p-4">
             <p className="text-xs font-medium text-text-muted">{stat.label}</p>
             <p className="mt-1 text-2xl font-bold text-text-primary">{stat.value}</p>
-            <p className={`mt-1 text-xs ${stat.change.startsWith('+') ? 'text-success' : 'text-danger'}`}>
-              {stat.change} <span className="text-text-muted">{stat.period}</span>
-            </p>
           </div>
         ))}
         {stats.length === 0 && (
