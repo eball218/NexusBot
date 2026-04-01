@@ -45,6 +45,9 @@ export default function BotManagementPage() {
 
   useEffect(() => {
     fetchStatus();
+    // Poll status every 10s to stay in sync with bot heartbeat
+    const interval = setInterval(fetchStatus, 10_000);
+    return () => clearInterval(interval);
   }, [fetchStatus]);
 
   async function handleAction(action: 'start' | 'stop' | 'restart') {

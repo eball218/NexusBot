@@ -7,7 +7,7 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
 import { StaticAuthProvider } from '@twurple/auth';
 import { ChatClient } from '@twurple/chat';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import {
   createDb,
   type Database,
@@ -101,10 +101,19 @@ function startHeartbeat() {
   heartbeatInterval = setInterval(async () => {
     if (!db || !resolvedTenantId) return;
     try {
+      // Only update heartbeat timestamp — NEVER overwrite status.
+      // Status is controlled exclusively by the dashboard API (start/stop).
+      // We DO transition 'starting' → 'running' since that's the normal boot flow.
       await db
         .update(botInstances)
         .set({ lastHeartbeatAt: new Date(), status: 'running', updatedAt: new Date() })
-        .where(eq(botInstances.tenantId, resolvedTenantId));
+        .where(
+          and(
+            eq(botInstances.tenantId, resolvedTenantId),
+            // Only set 'running' if current status is NOT 'stopped' — respect dashboard stop
+            sql`${botInstances.status} != 'stopped'`,
+          ),
+        );
     } catch {
       // silently ignore heartbeat failures
     }

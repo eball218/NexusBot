@@ -77,10 +77,10 @@ export async function botRoutes(app: FastifyInstance) {
 
     await db
       .update(botInstances)
-      .set({ status: 'starting', startedAt: new Date(), updatedAt: new Date() })
+      .set({ status: 'running', startedAt: new Date(), stoppedAt: null, lastError: null, updatedAt: new Date() })
       .where(eq(botInstances.tenantId, tenantId));
 
-    reply.send({ data: { message: 'Bot starting' } });
+    reply.send({ data: { message: 'Bot started', status: 'running' } });
   });
 
   // POST /api/v1/bot/stop
@@ -93,7 +93,7 @@ export async function botRoutes(app: FastifyInstance) {
       .set({ status: 'stopped', stoppedAt: new Date(), updatedAt: new Date() })
       .where(eq(botInstances.tenantId, tenantId));
 
-    reply.send({ data: { message: 'Bot stopped' } });
+    reply.send({ data: { message: 'Bot stopped', status: 'stopped' } });
   });
 
   // POST /api/v1/bot/restart
@@ -104,14 +104,16 @@ export async function botRoutes(app: FastifyInstance) {
     await db
       .update(botInstances)
       .set({
-        status: 'starting',
+        status: 'running',
         restartCount: sql`"restart_count" + 1`,
         startedAt: new Date(),
+        stoppedAt: null,
+        lastError: null,
         updatedAt: new Date(),
       })
       .where(eq(botInstances.tenantId, tenantId));
 
-    reply.send({ data: { message: 'Bot restarting' } });
+    reply.send({ data: { message: 'Bot restarted', status: 'running' } });
   });
 
   // GET /api/v1/bot/config
